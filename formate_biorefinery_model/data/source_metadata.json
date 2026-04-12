@@ -1,0 +1,17 @@
+{
+  "base_year": 2025,
+  "geography": "United States default",
+  "notes": [
+    "Economic defaults are screening values anchored to public reports where possible.",
+    "X. flavus GJ10 biological parameters remain explicit assumptions because public strain-specific industrial datasets are sparse.",
+    "Chemical input prices should be replaced with supplier quotes for design-grade TEA.",
+    "LCA factors are cradle-to-gate screening proxies and should be swapped for project-specific ecoinvent mappings when available."
+  ],
+  "priority_order": [
+    "US federal statistics and public datasets",
+    "National laboratory TEA and hydrogen reports",
+    "World Bank and public commodity benchmarks",
+    "Open literature proxies",
+    "User overrides"
+  ]
+}

@@ -1,0 +1,51 @@
+key,value,unit,source_name,source_url,source_year,confidence,notes
+capacity_factor,0.90,fraction,Project finance screening assumption,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Annual uptime fraction
+electrolyzer_energy_kwh_per_mol_formate,0.164,kWh/mol,Prototype electrolysis assumption carried into unified model,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,low,Replace when a validated formate electrolyzer dataset is selected
+formate_faradaic_efficiency,0.90,fraction,Prototype electrolysis assumption carried into unified model,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,low,Placeholder until a specific cathode and current density are fixed
+h2_faradaic_efficiency,0.10,fraction,Prototype electrolysis assumption carried into unified model,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,low,H2 byproduct fraction for mass and credit accounting
+water_kg_per_mol_formate,0.018,kg/mol,Electrochemical stoichiometry proxy,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Water feed for formate synthesis
+co2_kg_per_kg_formate,0.9565,kg/kg,Electrochemical stoichiometry proxy,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,CO2 feed equivalent to 44 over 46 mass ratio
+formate_to_ammonia_kg_per_kg,11.0,kg/kg,Strain-specific screening assumption from prior model,https://www.ncbi.nlm.nih.gov/,2026,low,Insufficient public X flavus GJ10 data so this remains a tunable biological assumption
+scp_to_ammonia_kg_per_kg,4.0,kg/kg,Strain-specific screening assumption from prior model,https://www.ncbi.nlm.nih.gov/,2026,low,Sellable dry SCP per sellable NH3 product before credit handling
+formate_to_urea_kg_per_kg,6.5,kg/kg,Stoichiometric proxy anchored to ammonia-equivalent pathway,https://www.ncbi.nlm.nih.gov/,2026,low,Direct biological urea pathway placeholder pending organism data
+scp_to_urea_kg_per_kg,2.3,kg/kg,Stoichiometric proxy anchored to ammonia-equivalent pathway,https://www.ncbi.nlm.nih.gov/,2026,low,Sellable dry SCP coproduct for the bio-urea scenario
+nitrogen_mass_fraction_scp,0.08,fraction,Biomass composition proxy,https://www.ncbi.nlm.nih.gov/,2025,medium,Representative dry biomass nitrogen fraction
+carbon_mass_fraction_scp,0.50,fraction,Biomass composition proxy,https://www.ncbi.nlm.nih.gov/,2025,medium,Representative dry biomass carbon fraction
+ammonia_recovery_efficiency,0.92,fraction,Vacuum stripping screening value,https://www.ncbi.nlm.nih.gov/,2025,medium,Default NH3 recovery case
+urea_recovery_efficiency,0.90,fraction,Evaporation and crystallization screening value,https://www.ncbi.nlm.nih.gov/,2025,low,Default urea recovery case
+vacuum_energy_kwh_per_kg_ammonia,0.50,kWh/kg,Prototype recovery assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Vacuum stripping electricity
+vacuum_naoh_mol_per_mol_nh3,2.0,mol/mol,Prototype recovery assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Caustic requirement for ammonia recovery
+membrane_energy_kwh_per_kg_ammonia,0.30,kWh/kg,Prototype recovery assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Membrane ammonia recovery electricity
+membrane_flux_kg_per_m2_h,2.0,kg/m2/h,Prototype recovery assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Membrane sizing basis
+air_stripping_energy_kwh_per_kg_ammonia,0.80,kWh/kg,Prototype recovery assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Heated air stripping electricity basis
+evaporation_kwh_per_kg_urea,0.12,kWh/kg,Urea recovery screening assumption,https://www.ncbi.nlm.nih.gov/,2025,low,Electricity for concentration and solids handling
+evaporation_steam_kg_per_kg_urea,0.65,kg/kg,Urea recovery screening assumption,https://www.ncbi.nlm.nih.gov/,2025,low,Low-pressure steam for concentration and crystallization
+ammonia_productivity_kg_per_m3_h,0.42,kg/m3/h,Prototype broth sizing from previous model,https://www.ncbi.nlm.nih.gov/,2025,low,Approximate effective productivity used for fermenter sizing
+urea_productivity_kg_per_m3_h,0.30,kg/m3/h,Biological urea scenario assumption,https://www.ncbi.nlm.nih.gov/,2025,low,More conservative than the ammonia case
+broth_water_kg_per_kg_ammonia,10.0,kg/kg,Prototype biorefinery assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Water associated with ammonia broth processing
+broth_water_kg_per_kg_urea,8.0,kg/kg,Biological urea scenario assumption,https://www.ncbi.nlm.nih.gov/,2025,low,Water associated with urea broth processing
+scp_cake_moisture,0.78,fraction,SCP dewatering assumption from prior models,https://www.ncbi.nlm.nih.gov/,2025,medium,Moisture after primary dewatering
+scp_product_moisture,0.08,fraction,SCP product assumption from prior models,https://www.ncbi.nlm.nih.gov/,2025,medium,Final packaged SCP moisture
+scp_drying_kwh_per_kg_water,1.15,kWh/kg,Prior SCP TEA assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Electric drying load
+centrifuge_kwh_per_m3_broth,1.2,kWh/m3,Prior SCP TEA assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Harvest electricity
+agitation_aeration_kwh_per_m3_h,0.85,kWh/m3/h,Prior bioprocess TEA assumption,https://www.ncbi.nlm.nih.gov/,2025,medium,Combined mixing and aeration load
+air_compression_kwh_per_kg_n2,0.05,kWh/kg,Compressed air screening assumption,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,low,Electricity to deliver nitrogen from air to the bioreactor
+bioreactor_base_cost_usd,50000,USD,Prior TEA scaling basis,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Base purchase cost for 100 cubic meter stainless reactor
+bioreactor_reference_m3,100,m3,Prior TEA scaling basis,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Reference reactor size for scaling
+recovery_base_cost_usd,120000,USD,Prior TEA scaling basis,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Base ammonia recovery cost at 1000 kilograms per day primary product
+urea_recovery_base_cost_usd,130000,USD,Prior TEA scaling basis,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Base urea recovery cost at 1000 kilograms per day primary product
+scp_processing_base_cost_usd,70000,USD,Prior TEA scaling basis,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Base centrifuge and dryer cost at 1000 kilograms per day SCP
+equipment_scaling_exponent,0.70,fraction,General process scaling heuristic,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Exponent for throughput-based scaling
+membrane_flux_kg_per_m2_h,0.50,kg/m2/h,Hollow-fiber gas-permeable membrane literature review,https://pmc.ncbi.nlm.nih.gov/articles/PMC9612587/,2025,medium,Realistic HF flux for NH3 stripping; range 0.1-1.0 kg/m2/h
+map_electricity_kwh_per_kg_nh3,0.10,kWh/kg,MAP precipitation energy literature proxy,https://pmc.ncbi.nlm.nih.gov/articles/PMC9612587/,2025,medium,Mixing pumping and dewatering for struvite settler
+map_mg_mol_per_mol_nh3,1.05,mol/mol,MAP stoichiometry with slight Mg excess for complete precipitation,https://pmc.ncbi.nlm.nih.gov/articles/PMC9612587/,2025,high,Molar Mg:NH4 ratio; slight excess ensures >95 pct conversion in pH 8-9 range
+map_phosphate_mol_per_mol_nh3,1.05,mol/mol,MAP stoichiometry with slight P excess for complete precipitation,https://pmc.ncbi.nlm.nih.gov/articles/PMC9612587/,2025,high,Molar PO4:NH4 ratio; H3PO4 used as phosphate source unless P is present in broth
+map_recovery_efficiency,0.88,fraction,MAP precipitation NH3-N recovery literature review,https://pmc.ncbi.nlm.nih.gov/articles/PMC9612587/,2025,medium,N recovery as struvite at optimized pH 8.5-9.0; residual N stays in filtrate
+struvite_kg_per_kg_nh3,14.41,kg/kg,Struvite stoichiometry MgNH4PO4 6H2O MW 245.3 per NH3 MW 17.03,https://pmc.ncbi.nlm.nih.gov/articles/PMC9612587/,2025,high,Fixed by molecular weights; 1 mol struvite per mol NH3
+map_settler_base_cost_usd,65000,USD,MAP settler and dewatering equipment base cost at 1000 kg per day NH3,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,low,Reaction tank mixer settler and belt filter press; lower CapEx than stripping column
+mvr_kwh_per_kg_urea,0.45,kWh/kg,MVR compressor electricity from fertilizer and sugar industry references,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Mechanical vapor recompression replaces most steam with electricity; well-proven at scale
+mvr_steam_kg_per_kg_urea,0.05,kg/kg,Minimal LP steam for crystal polishing finish in MVR circuit,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,medium,Only final crystallization step requires steam; 90+ pct steam reduction vs single-effect
+mvr_base_cost_usd,210000,USD,MVR compressor plus crystallizer base cost at 1000 kg per day urea,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,low,Higher CapEx than single-effect evaporator but recovered through steam savings at scale
+map_fert_h3po4_mol_per_mol_nh3,1.02,mol/mol,MAP fertilizer stoichiometry with slight H3PO4 excess for complete neutralization,https://www.worldfertilizer.com/,2025,high,NH3 plus H3PO4 to NH4H2PO4; 2 pct excess ensures acidic conditions for complete reaction
+map_fert_nh4h2po4_kg_per_kg_nh3,6.55,kg/kg,MAP fertilizer yield per kg NH3 accounting for 97 pct conversion and mother liquor loss,https://www.worldfertilizer.com/,2025,high,Stoichiometric: MW(NH4H2PO4) 115.03 divided by MW(NH3) 17.03 times 0.97 recovery
+map_fert_granulation_base_cost_usd,90000,USD,Neutralization tank plus spray dryer or prilling tower base cost at 1000 kg per day NH3,https://www.nrel.gov/docs/fy22osti/82908.pdf,2025,low,MAP route uses same membrane system as MEMBRANE method plus downstream granulation equipment

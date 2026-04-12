@@ -1,0 +1,123 @@
+{
+  "00_process_flow": {
+    "title": "Process Flow Diagram",
+    "what_is_plotted": "A conceptual block-flow diagram linking CO2 and water inputs, electrolytic formate generation, X. flavus GJ10 fermentation, nitrogen-product recovery, and SCP finishing.",
+    "calculation_basis": "This figure is schematic rather than numerical. It summarizes the foreground model sequence implemented in process_blocks.py and the two major product branches tracked in ScenarioCategory.",
+    "important_assumptions": [
+      "Electrolyzer converts CO2 to formate and a hydrogen byproduct.",
+      "Fermentation co-produces either ammonia or bio-urea plus SCP.",
+      "Recovery technologies are abstracted into unit blocks rather than PFD-grade equipment trains."
+    ],
+    "interpretation_guidance": "Use this figure to orient yourself to mass and energy flow through the plant, not to read quantitative values."
+  },
+  "01_market_viability": {
+    "title": "Market Viability Overview",
+    "what_is_plotted": "Gross and net LCOX bars across baseline scales for NH3+SCP and urea+SCP, overlaid with product market-price benchmarks.",
+    "calculation_basis": "Gross LCOX is total annual cost divided by sellable primary product. Net LCOX subtracts co-product credits from the same numerator. Market price points use the benchmark_primary_revenue_usd_per_y metric divided by sellable product mass.",
+    "important_assumptions": [
+      "Baseline rows come from run_baseline_cases().",
+      "SCP credit is included in net LCOX when enabled in ScenarioConfig.",
+      "Incumbent market benchmarks are screening values rather than forward contract prices."
+    ],
+    "interpretation_guidance": "Net LCOX below the benchmark line indicates a favorable screening result at that scale under the chosen assumptions."
+  },
+  "02_cost_structure": {
+    "title": "Cost Structure Waterfall",
+    "what_is_plotted": "A horizontal component-by-component breakdown of the per-kg primary-product cost for a selected capacity, including credits as negative bars.",
+    "calculation_basis": "Variable OPEX, fixed OPEX, and credit dictionaries from TEAResults are regrouped into high-level categories and divided by sellable primary product mass.",
+    "important_assumptions": [
+      "Annualized capital is calculated with the model discount rate and plant life.",
+      "Credits can include SCP, struvite, MAP fertilizer, H2, or CO2 depending on the scenario.",
+      "Groupings are presentation-level summaries and do not alter the underlying TEA."
+    ],
+    "interpretation_guidance": "Use this figure to identify the dominant cost drivers and which credits are responsible for moving gross LCOX toward net LCOX."
+  },
+  "03_scale_margin": {
+    "title": "Scale-Dependent Margin to Market",
+    "what_is_plotted": "Net LCOX vs capacity on a log scale alongside market-price benchmarks, with shaded profitable and unprofitable regions.",
+    "calculation_basis": "Rows are grouped by ScenarioCategory from run_baseline_cases(). Each point uses net_primary_lcox_usd_per_kg and the benchmark market price for the corresponding product.",
+    "important_assumptions": [
+      "Only the baseline scenario family is shown.",
+      "Capacity impacts both CapEx scaling and labor heuristics.",
+      "Market price is treated as externally fixed with no endogenous response to plant size."
+    ],
+    "interpretation_guidance": "The vertical gap between market price and net LCOX is the screening margin to market; a positive gap suggests economic headroom."
+  },
+  "04_cashflow_npv": {
+    "title": "Best-Method NPV and Capital Comparison",
+    "what_is_plotted": "NPV vs scale, annual cash flow at 1,000 t/y, and capital investment vs scale for the curated best NH3 and urea recovery methods.",
+    "calculation_basis": "The figure runs run_best_methods_grid() to compare selected recovery pathways. NPV uses the TEA cash-flow model over the configured plant life and discount rate.",
+    "important_assumptions": [
+      "Only best-method families are included; expensive recovery routes are intentionally excluded.",
+      "Cash flow uses benchmark product revenues plus enabled credits.",
+      "Capital scaling uses the equipment scaling exponent and Lang-factor-based installed cost logic from tea.py."
+    ],
+    "interpretation_guidance": "Read this figure as the high-level investment screen: which recovery/product routes scale toward positive NPV and what capital burden that requires."
+  },
+  "05_cost_vs_gwp": {
+    "title": "LCA Deep-Dive and Cost vs Climate Intensity",
+    "what_is_plotted": "Net GWP by accounting scenario, cost vs GWP for the most attractive negative-GWP cases, and contribution analysis for the design-basis LCA case.",
+    "calculation_basis": "Panel a uses run_lca_sensitivity_grid(). Panel b uses run_best_methods_negative_gwp_grid() and retains the lowest net-LCOX negative-GWP case per curated method family. Panel c stacks LCAResults contributions normalized by primary product mass.",
+    "important_assumptions": [
+      "Favorable climate cases assume renewable electricity, biogenic waste CO2, SCP carbon credit, and SCP displacement credit.",
+      "The contribution analysis shown in panel c uses the grid-power, biogenic-CO2 design basis.",
+      "Haber-Bosch lines are screening benchmarks for incumbent natural-gas and coal routes."
+    ],
+    "interpretation_guidance": "Panel a shows how carbon accounting choices move the result, panel b isolates the commercially attractive negative-GWP cases, and panel c explains which burdens and credits create the net footprint."
+  },
+  "06_sensitivity_nh3": {
+    "title": "NH3 Sensitivity Tornado",
+    "what_is_plotted": "A one-at-a-time sensitivity tornado for NH3+SCP net LCOX at the selected scale.",
+    "calculation_basis": "For each configured parameter, run_sensitivity_cases() evaluates minus-delta, base, and plus-delta scenarios. The chart displays the resulting net LCOX range around the base case.",
+    "important_assumptions": [
+      "The analysis is local and one-at-a-time; it does not capture parameter interactions.",
+      "The default delta is 20 percent.",
+      "Only parameters listed in SENSITIVITY_PARAMS for ScenarioCategory.AMMONIA_SCP are varied."
+    ],
+    "interpretation_guidance": "The longest bars identify the assumptions to which NH3 economics are most sensitive in this screening model."
+  },
+  "07_sensitivity_urea": {
+    "title": "Urea Sensitivity Tornado",
+    "what_is_plotted": "A one-at-a-time sensitivity tornado for urea+SCP net LCOX at the selected scale.",
+    "calculation_basis": "This uses the same run_sensitivity_cases() machinery as the NH3 tornado, but with the urea-specific sensitivity parameter list.",
+    "important_assumptions": [
+      "The analysis is local and one-at-a-time rather than probabilistic.",
+      "The default delta is 20 percent.",
+      "Only parameters listed in SENSITIVITY_PARAMS for ScenarioCategory.BIO_UREA_SCP are varied."
+    ],
+    "interpretation_guidance": "Use this panel to see which technical or economic assumptions most strongly move the urea route’s net LCOX."
+  },
+  "08_executive_summary": {
+    "title": "Executive Summary",
+    "what_is_plotted": "A four-panel summary of net LCOX, GWP, capital investment, and NPV as a function of scale for NH3+SCP and urea+SCP baseline cases.",
+    "calculation_basis": "Each panel reuses the baseline ScenarioEvaluation rows and plots one key metric from TEAResults or LCAResults across the modeled capacities.",
+    "important_assumptions": [
+      "This figure uses the default baseline scenarios rather than all recovery alternatives.",
+      "The GWP panel reflects the current baseline LCA assumptions in ScenarioConfig.",
+      "NPV uses the same annual cash flow and discounting approach as fig 04."
+    ],
+    "interpretation_guidance": "This is the fastest way to compare the two product platforms across the main economic and environmental KPIs."
+  },
+  "09_nh3_recovery_compare": {
+    "title": "NH3 Recovery Method Comparison",
+    "what_is_plotted": "Gross and net LCOX by NH3 recovery method plus a recovery cost-driver breakdown at a fixed capacity.",
+    "calculation_basis": "Rows come from run_recovery_comparison(ScenarioCategory.AMMONIA_SCP, capacity_tpy). TEA component costs are normalized by NH3-equivalent product mass.",
+    "important_assumptions": [
+      "All listed NH3 recovery methods are evaluated at the same plant scale.",
+      "The right panel uses TEA cost categories as a proxy for recovery cost drivers.",
+      "Struvite and MAP routes monetize fertilizer products instead of bulk ammonia."
+    ],
+    "interpretation_guidance": "Use this comparison to understand the trade-off between lower energy intensity, reagent demand, and credit structure across NH3 recovery options."
+  },
+  "10_urea_recovery_compare": {
+    "title": "Urea Recovery Method Comparison",
+    "what_is_plotted": "Gross and net LCOX, steam-versus-electricity trade-off, and GWP by urea recovery route at a fixed capacity.",
+    "calculation_basis": "Rows come from run_recovery_comparison(ScenarioCategory.BIO_UREA_SCP, capacity_tpy). The center panel isolates recovery utility costs while the right panel compares LCA intensity for the same method set.",
+    "important_assumptions": [
+      "The same product scale is used across all recovery routes.",
+      "The comparison is screening-level and uses simplified utility partitioning for the center panel.",
+      "MVR and evaporation are the primary routes of interest; the hybrid case is retained mainly for comparison and backward compatibility."
+    ],
+    "interpretation_guidance": "This figure helps decide whether reduced steam demand and changed electricity usage justify the extra complexity of MVR-type recovery."
+  }
+}
