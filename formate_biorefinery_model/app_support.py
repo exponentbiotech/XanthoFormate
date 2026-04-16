@@ -7,6 +7,7 @@ from .config import (
     AmmoniaRecoveryMethod,
     CO2Source,
     ElectricityCase,
+    FeedstockType,
     ScenarioCategory,
     ScenarioConfig,
     UreaRecoveryMethod,
@@ -29,49 +30,47 @@ class SliderSpec:
     help_text: str
     categories: Tuple[ScenarioCategory, ...] = ()
     unit: str = ""
+    feedstock_types: Tuple[FeedstockType, ...] = ()  # empty = shown for all feedstocks
+    is_override_key: bool = True  # False for special keys like major_capex_usd
 
 
 SLIDER_SPECS: Tuple[SliderSpec, ...] = (
+    # ── Formate feedstock biological performance ──
     SliderSpec(
         "formate_to_ammonia_kg_per_kg",
         "Formate required per kg NH\u2083",
         "Biological performance",
-        4.0,
-        20.0,
-        0.1,
+        4.0, 20.0, 0.1,
         "Biological and electrochemical efficiency proxy for the ammonia route.",
         (ScenarioCategory.AMMONIA_SCP,),
         "kg formate / kg NH\u2083",
+        (FeedstockType.FORMATE,),
     ),
     SliderSpec(
         "scp_to_ammonia_kg_per_kg",
         "SCP produced per kg NH\u2083",
         "Biological performance",
-        0.5,
-        8.0,
-        0.1,
-        "Dry SCP coproduct yield in the ammonia route.",
+        0.5, 8.0, 0.1,
+        "Dry SCP coproduct yield in the ammonia route (formate).",
         (ScenarioCategory.AMMONIA_SCP,),
         "kg SCP / kg NH\u2083",
+        (FeedstockType.FORMATE,),
     ),
     SliderSpec(
         "ammonia_productivity_kg_per_m3_h",
         "Ammonia productivity",
         "Biological performance",
-        0.05,
-        2.0,
-        0.01,
-        "Fermenter volumetric productivity for the ammonia case.",
+        0.05, 2.0, 0.01,
+        "Fermenter volumetric productivity for the ammonia case (formate).",
         (ScenarioCategory.AMMONIA_SCP,),
         "kg / m\u00b3\u00b7h",
+        (FeedstockType.FORMATE,),
     ),
     SliderSpec(
         "ammonia_recovery_efficiency",
         "NH\u2083 recovery efficiency",
         "Biological performance",
-        0.50,
-        0.99,
-        0.01,
+        0.50, 0.99, 0.01,
         "Default recovery yield used in the generic ammonia route.",
         (ScenarioCategory.AMMONIA_SCP,),
         "fraction (0\u20131)",
@@ -80,45 +79,162 @@ SLIDER_SPECS: Tuple[SliderSpec, ...] = (
         "formate_to_urea_kg_per_kg",
         "Formate required per kg urea",
         "Biological performance",
-        3.0,
-        12.0,
-        0.1,
+        3.0, 12.0, 0.1,
         "Biological and electrochemical efficiency proxy for the bio-urea route.",
         (ScenarioCategory.BIO_UREA_SCP,),
         "kg formate / kg urea",
+        (FeedstockType.FORMATE,),
     ),
     SliderSpec(
         "scp_to_urea_kg_per_kg",
         "SCP produced per kg urea",
         "Biological performance",
-        0.5,
-        5.0,
-        0.1,
-        "Dry SCP coproduct yield in the urea route.",
+        0.5, 5.0, 0.1,
+        "Dry SCP coproduct yield in the urea route (formate).",
         (ScenarioCategory.BIO_UREA_SCP,),
         "kg SCP / kg urea",
+        (FeedstockType.FORMATE,),
     ),
     SliderSpec(
         "urea_productivity_kg_per_m3_h",
         "Urea productivity",
         "Biological performance",
-        0.05,
-        1.5,
-        0.01,
-        "Fermenter volumetric productivity for the urea case.",
+        0.05, 1.5, 0.01,
+        "Fermenter volumetric productivity for the urea case (formate).",
         (ScenarioCategory.BIO_UREA_SCP,),
         "kg / m\u00b3\u00b7h",
+        (FeedstockType.FORMATE,),
     ),
     SliderSpec(
         "urea_recovery_efficiency",
         "Urea recovery efficiency",
         "Biological performance",
-        0.50,
-        0.99,
-        0.01,
+        0.50, 0.99, 0.01,
         "Generic urea recovery yield used in the screening model.",
         (ScenarioCategory.BIO_UREA_SCP,),
         "fraction (0\u20131)",
+    ),
+    # ── H2/CO2 feedstock biological performance ──
+    SliderSpec(
+        "h2_to_ammonia_kg_per_kg",
+        "H\u2082 required per kg NH\u2083",
+        "Biological performance",
+        1.0, 8.0, 0.1,
+        "H2 demand for autotrophic NH3 production (H2/CO2 path).",
+        (ScenarioCategory.AMMONIA_SCP,),
+        "kg H\u2082 / kg NH\u2083",
+        (FeedstockType.H2_CO2,),
+    ),
+    SliderSpec(
+        "h2_to_urea_kg_per_kg",
+        "H\u2082 required per kg urea",
+        "Biological performance",
+        0.5, 5.0, 0.1,
+        "H2 demand for autotrophic urea production (H2/CO2 path).",
+        (ScenarioCategory.BIO_UREA_SCP,),
+        "kg H\u2082 / kg urea",
+        (FeedstockType.H2_CO2,),
+    ),
+    SliderSpec(
+        "scp_to_ammonia_h2co2_kg_per_kg",
+        "SCP per kg NH\u2083 (H\u2082/CO\u2082)",
+        "Biological performance",
+        0.5, 8.0, 0.1,
+        "Dry SCP coproduct yield on H2/CO2 autotrophic path.",
+        (ScenarioCategory.AMMONIA_SCP,),
+        "kg SCP / kg NH\u2083",
+        (FeedstockType.H2_CO2,),
+    ),
+    SliderSpec(
+        "scp_to_urea_h2co2_kg_per_kg",
+        "SCP per kg urea (H\u2082/CO\u2082)",
+        "Biological performance",
+        0.5, 5.0, 0.1,
+        "Dry SCP coproduct yield on H2/CO2 autotrophic path (urea).",
+        (ScenarioCategory.BIO_UREA_SCP,),
+        "kg SCP / kg urea",
+        (FeedstockType.H2_CO2,),
+    ),
+    SliderSpec(
+        "ammonia_productivity_h2co2_kg_per_m3_h",
+        "NH\u2083 productivity (H\u2082/CO\u2082)",
+        "Biological performance",
+        0.05, 2.0, 0.01,
+        "Fermenter volumetric productivity on H2/CO2 (ammonia).",
+        (ScenarioCategory.AMMONIA_SCP,),
+        "kg / m\u00b3\u00b7h",
+        (FeedstockType.H2_CO2,),
+    ),
+    SliderSpec(
+        "urea_productivity_h2co2_kg_per_m3_h",
+        "Urea productivity (H\u2082/CO\u2082)",
+        "Biological performance",
+        0.05, 1.5, 0.01,
+        "Fermenter volumetric productivity on H2/CO2 (urea).",
+        (ScenarioCategory.BIO_UREA_SCP,),
+        "kg / m\u00b3\u00b7h",
+        (FeedstockType.H2_CO2,),
+    ),
+    # ── Methanol feedstock biological performance ──
+    SliderSpec(
+        "methanol_to_ammonia_kg_per_kg",
+        "Methanol per kg NH\u2083",
+        "Biological performance",
+        4.0, 20.0, 0.1,
+        "Methanol demand for methylotrophic NH3 production.",
+        (ScenarioCategory.AMMONIA_SCP,),
+        "kg MeOH / kg NH\u2083",
+        (FeedstockType.METHANOL,),
+    ),
+    SliderSpec(
+        "methanol_to_urea_kg_per_kg",
+        "Methanol per kg urea",
+        "Biological performance",
+        2.0, 12.0, 0.1,
+        "Methanol demand for methylotrophic urea production.",
+        (ScenarioCategory.BIO_UREA_SCP,),
+        "kg MeOH / kg urea",
+        (FeedstockType.METHANOL,),
+    ),
+    SliderSpec(
+        "scp_to_ammonia_methanol_kg_per_kg",
+        "SCP per kg NH\u2083 (methanol)",
+        "Biological performance",
+        0.5, 8.0, 0.1,
+        "Dry SCP coproduct yield on methanol path.",
+        (ScenarioCategory.AMMONIA_SCP,),
+        "kg SCP / kg NH\u2083",
+        (FeedstockType.METHANOL,),
+    ),
+    SliderSpec(
+        "scp_to_urea_methanol_kg_per_kg",
+        "SCP per kg urea (methanol)",
+        "Biological performance",
+        0.5, 5.0, 0.1,
+        "Dry SCP coproduct yield on methanol path (urea).",
+        (ScenarioCategory.BIO_UREA_SCP,),
+        "kg SCP / kg urea",
+        (FeedstockType.METHANOL,),
+    ),
+    SliderSpec(
+        "ammonia_productivity_methanol_kg_per_m3_h",
+        "NH\u2083 productivity (methanol)",
+        "Biological performance",
+        0.05, 2.0, 0.01,
+        "Fermenter volumetric productivity on methanol (ammonia).",
+        (ScenarioCategory.AMMONIA_SCP,),
+        "kg / m\u00b3\u00b7h",
+        (FeedstockType.METHANOL,),
+    ),
+    SliderSpec(
+        "urea_productivity_methanol_kg_per_m3_h",
+        "Urea productivity (methanol)",
+        "Biological performance",
+        0.05, 1.5, 0.01,
+        "Fermenter volumetric productivity on methanol (urea).",
+        (ScenarioCategory.BIO_UREA_SCP,),
+        "kg / m\u00b3\u00b7h",
+        (FeedstockType.METHANOL,),
     ),
     SliderSpec(
         "agitation_aeration_kwh_per_m3_h",
@@ -157,12 +273,19 @@ SLIDER_SPECS: Tuple[SliderSpec, ...] = (
         "co2_price_usd_per_kg",
         "Delivered CO\u2082 price",
         "Cost of inputs",
-        0.00,
-        0.30,
-        0.005,
+        0.00, 0.30, 0.005,
         "Merchant or site-specific CO2 feed price.",
-        (),
-        "$ / kg",
+        (), "$ / kg",
+        (FeedstockType.FORMATE, FeedstockType.H2_CO2),
+    ),
+    SliderSpec(
+        "methanol_price_usd_per_kg",
+        "Methanol price",
+        "Cost of inputs",
+        0.10, 1.00, 0.01,
+        "Industrial methanol commodity price.",
+        (), "$ / kg",
+        (FeedstockType.METHANOL,),
     ),
     SliderSpec(
         "water_price_usd_per_kg",
@@ -242,15 +365,21 @@ SLIDER_SPECS: Tuple[SliderSpec, ...] = (
         "$ / m\u00b2",
     ),
     SliderSpec(
+        "major_capex_usd",
+        "Major CapEx (user-defined)",
+        "Financing",
+        0.0, 10_000_000.0, 25_000.0,
+        "Optional lump-sum major equipment cost added to the model. Items >$100K are excluded from minor CapEx by default.",
+        (), "USD",
+        (), False,
+    ),
+    SliderSpec(
         "discount_rate",
         "Discount rate",
         "Financing",
-        0.02,
-        0.30,
-        0.005,
+        0.02, 0.30, 0.005,
         "Nominal discount rate used for annualization and NPV.",
-        (),
-        "fraction (0\u20131)",
+        (), "fraction (0\u20131)",
     ),
     SliderSpec(
         "plant_life_years",
@@ -289,34 +418,28 @@ SLIDER_SPECS: Tuple[SliderSpec, ...] = (
         "electrolyzer_installed_cost_usd_per_kw",
         "Electrolyzer installed cost",
         "Financing",
-        200.0,
-        3000.0,
-        25.0,
+        200.0, 3000.0, 25.0,
         "Installed PEM electrolyzer cost basis.",
-        (),
-        "$ / kW",
+        (), "$ / kW",
+        (FeedstockType.FORMATE, FeedstockType.H2_CO2),
     ),
     SliderSpec(
         "electrolyzer_stack_replacement_fraction",
         "Stack replacement fraction",
         "Financing",
-        0.05,
-        0.60,
-        0.01,
+        0.05, 0.60, 0.01,
         "Fraction of installed electrolyzer cost paid at stack replacement.",
-        (),
-        "fraction (0\u20131)",
+        (), "fraction (0\u20131)",
+        (FeedstockType.FORMATE, FeedstockType.H2_CO2),
     ),
     SliderSpec(
         "electrolyzer_stack_life_years",
         "Stack life",
         "Financing",
-        1.0,
-        20.0,
-        0.5,
+        1.0, 20.0, 0.5,
         "Replacement interval for the electrolyzer stack.",
-        (),
-        "years",
+        (), "years",
+        (FeedstockType.FORMATE, FeedstockType.H2_CO2),
     ),
     SliderSpec(
         "maintenance_factor",
@@ -354,18 +477,27 @@ SLIDER_SPECS: Tuple[SliderSpec, ...] = (
 )
 
 
-def slider_specs_for(category: ScenarioCategory) -> Dict[str, List[SliderSpec]]:
+def slider_specs_for(
+    category: ScenarioCategory,
+    feedstock_type: FeedstockType = FeedstockType.FORMATE,
+) -> Dict[str, List[SliderSpec]]:
     groups: Dict[str, List[SliderSpec]] = {}
     for spec in SLIDER_SPECS:
         if spec.categories and category not in spec.categories:
+            continue
+        if spec.feedstock_types and feedstock_type not in spec.feedstock_types:
             continue
         groups.setdefault(spec.group, []).append(spec)
     return groups
 
 
-def all_slider_specs() -> Dict[str, List[SliderSpec]]:
+def all_slider_specs(
+    feedstock_type: FeedstockType = FeedstockType.FORMATE,
+) -> Dict[str, List[SliderSpec]]:
     groups: Dict[str, List[SliderSpec]] = {}
     for spec in SLIDER_SPECS:
+        if spec.feedstock_types and feedstock_type not in spec.feedstock_types:
+            continue
         groups.setdefault(spec.group, []).append(spec)
     return groups
 
@@ -375,21 +507,32 @@ def default_input_records() -> Dict[str, Dict[str, object]]:
     return records_by_key(datasets)
 
 
-def slider_defaults(category: ScenarioCategory) -> Dict[str, float]:
+def slider_defaults(
+    category: ScenarioCategory,
+    feedstock_type: FeedstockType = FeedstockType.FORMATE,
+) -> Dict[str, float]:
     defaults = default_input_records()
     out: Dict[str, float] = {}
-    for specs in slider_specs_for(category).values():
+    for specs in slider_specs_for(category, feedstock_type=feedstock_type).values():
         for spec in specs:
-            out[spec.key] = float(defaults[spec.key]["value"])
+            if not spec.is_override_key:
+                out[spec.key] = spec.min_value
+            else:
+                out[spec.key] = float(defaults[spec.key]["value"])
     return out
 
 
-def all_slider_defaults() -> Dict[str, float]:
+def all_slider_defaults(
+    feedstock_type: FeedstockType = FeedstockType.FORMATE,
+) -> Dict[str, float]:
     defaults = default_input_records()
     out: Dict[str, float] = {}
-    for specs in all_slider_specs().values():
+    for specs in all_slider_specs(feedstock_type=feedstock_type).values():
         for spec in specs:
-            out[spec.key] = float(defaults[spec.key]["value"])
+            if not spec.is_override_key:
+                out[spec.key] = spec.min_value
+            else:
+                out[spec.key] = float(defaults[spec.key]["value"])
     return out
 
 
@@ -404,6 +547,7 @@ def dashboard_scenarios(
     capacities: Sequence[float] = (100.0, 1_000.0, 10_000.0),
 ) -> List[ScenarioConfig]:
     shared = {
+        "feedstock_type": base_config.feedstock_type,
         "electricity_case": base_config.electricity_case,
         "use_scp_credit": base_config.use_scp_credit,
         "use_h2_credit": base_config.use_h2_credit,
@@ -447,6 +591,7 @@ def evaluate_dashboard_grid(
 def current_config_summary(config: ScenarioConfig) -> Dict[str, object]:
     return {
         "category": config.category.value,
+        "feedstock_type": config.feedstock_type.value,
         "annual_primary_product_tpy": float(config.annual_primary_product_tpy),
         "electricity_case": config.electricity_case.value,
         "co2_source": config.co2_source.value,
@@ -461,6 +606,8 @@ def current_config_summary(config: ScenarioConfig) -> Dict[str, object]:
 def kpi_cards(evaluation: ScenarioEvaluation) -> List[Dict[str, str]]:
     metrics = evaluation.tea.metrics
     lca_metrics = evaluation.lca.metrics
+    excluded_total = sum(evaluation.tea.capex_excluded_usd.values())
+    excluded_note = f" (excl. ${excluded_total/1e6:.1f}M major)" if excluded_total > 0 else ""
     return [
         {
             "label": "Net LCOX",
@@ -475,7 +622,7 @@ def kpi_cards(evaluation: ScenarioEvaluation) -> List[Dict[str, str]]:
             "value": f"{lca_metrics['primary_product_gwp_kgco2e_per_kg']:.2f} kg CO2e/kg",
         },
         {
-            "label": "NPV",
+            "label": f"NPV{excluded_note}",
             "value": f"${metrics['npv_usd'] / 1e6:.1f}M",
         },
         {

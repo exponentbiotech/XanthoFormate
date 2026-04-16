@@ -12,6 +12,7 @@ from formate_biorefinery_model import (
     AmmoniaRecoveryMethod,
     CO2Source,
     ElectricityCase,
+    FeedstockType,
     ScenarioCategory,
     ScenarioConfig,
     UreaRecoveryMethod,
@@ -235,6 +236,11 @@ _NH3_LABELS[AmmoniaRecoveryMethod.STRUVITE_MAP.value] = "Struvite"
 _UREA_LABELS = {m.value: m.value.replace("_", " ").title() for m in UreaRecoveryMethod}
 _ELEC_LABELS = {m.value: m.value.replace("_", " ").title() for m in ElectricityCase}
 _CO2_LABELS = {m.value: m.value.replace("_", " ").title() for m in CO2Source}
+_FEED_LABELS = {
+    FeedstockType.FORMATE.value: "Formate (CO2 electrolysis)",
+    FeedstockType.H2_CO2.value: "H2/CO2 (water electrolysis)",
+    FeedstockType.METHANOL.value: "Methanol (purchased)",
+}
 
 _MODEL_OPTIONS = [
     "llama-3.1-8b-instant",
@@ -245,13 +251,17 @@ _MODEL_OPTIONS = [
 
 
 def _display_pathway_label(config: ScenarioConfig) -> str:
+    feed_prefix = _FEED_LABELS.get(config.feedstock_type.value, "")
     if config.category == ScenarioCategory.AMMONIA_SCP:
         if config.ammonia_recovery_method == AmmoniaRecoveryMethod.STRUVITE_MAP:
-            return "Struvite + SCP"
-        if config.ammonia_recovery_method == AmmoniaRecoveryMethod.MAP_FERTILIZER:
-            return "MAP fertilizer + SCP"
-        return "NH3 + SCP"
-    return "Urea + SCP"
+            product = "Struvite + SCP"
+        elif config.ammonia_recovery_method == AmmoniaRecoveryMethod.MAP_FERTILIZER:
+            product = "MAP fertilizer + SCP"
+        else:
+            product = "NH3 + SCP"
+    else:
+        product = "Urea + SCP"
+    return f"{product} via {feed_prefix}" if feed_prefix else product
 
 
 def _data_fingerprint() -> str:
@@ -362,6 +372,7 @@ def main() -> None:
     _inject_css()
 
     category_values = [item.value for item in ScenarioCategory]
+    feed_values = [item.value for item in FeedstockType]
     nh3_values = [m.value for m in AmmoniaRecoveryMethod]
     urea_values = [m.value for m in UreaRecoveryMethod]
     elec_values = [item.value for item in ElectricityCase]
@@ -371,6 +382,15 @@ def main() -> None:
         st.markdown("<div class='sidebar-chip'>Focus View</div>", unsafe_allow_html=True)
         st.caption("Choose the default operating point and assumptions that drive the full model.")
 
+        feedstock_type = FeedstockType(
+            st.selectbox(
+                "Feedstock",
+                options=feed_values,
+                index=feed_values.index(FeedstockType.FORMATE.value),
+                format_func=lambda v: _FEED_LABELS.get(v, v),
+                help="Carbon/energy source for the biorefinery. Formate = CO2 electrolysis; H2/CO2 = water electrolysis; Methanol = purchased.",
+            )
+        )
         category = ScenarioCategory(
             st.selectbox(
                 "Primary pathway",
@@ -419,14 +439,18 @@ def main() -> None:
                     format_func=lambda v: _ELEC_LABELS[v],
                 )
             )
-            co2_source = CO2Source(
-                st.selectbox(
-                    "CO2 source",
-                    options=co2_values,
-                    index=co2_values.index(CO2Source.BIOGENIC_WASTE.value),
-                    format_func=lambda v: _CO2_LABELS[v],
+            if feedstock_type != FeedstockType.METHANOL:
+                co2_source = CO2Source(
+                    st.selectbox(
+                        "CO2 source",
+                        options=co2_values,
+                        index=co2_values.index(CO2Source.BIOGENIC_WASTE.value),
+                        format_func=lambda v: _CO2_LABELS[v],
+                    )
                 )
-            )
+            else:
+                co2_source = CO2Source.BIOGENIC_WASTE
+                st.caption("CO2 source not applicable for methanol feedstock.")
 
         st.markdown("<div class='sidebar-chip'>Climate / Credits</div>", unsafe_allow_html=True)
         with st.expander("LCA credits", expanded=True):
@@ -447,22 +471,23 @@ def main() -> None:
             )
 
         st.markdown("<div class='sidebar-chip'>Assumptions</div>", unsafe_allow_html=True)
-        slider_defaults = all_slider_defaults()
-        slider_groups = all_slider_specs()
+        _slider_defaults = all_slider_defaults(feedstock_type=feedstock_type)
+        slider_groups = all_slider_specs(feedstock_type=feedstock_type)
         overrides: Dict[str, float] = {}
         for group_name, specs in slider_groups.items():
             with st.expander(group_name, expanded=(group_name == "Biological performance")):
                 for spec in specs:
                     label = f"{spec.label}  [{spec.unit}]" if spec.unit else spec.label
+                    default_val = _slider_defaults.get(spec.key, spec.min_value)
                     value = float(
                         st.slider(
                             label,
                             min_value=float(spec.min_value),
                             max_value=float(spec.max_value),
-                            value=float(slider_defaults[spec.key]),
+                            value=float(default_val),
                             step=float(spec.step),
                             help=spec.help_text,
-                            key=f"slider_{spec.key}",
+                            key=f"slider_{spec.key}_{feedstock_type.value}",
                         )
                     )
                     overrides[spec.key] = value
@@ -483,6 +508,7 @@ def main() -> None:
     current_config = ScenarioConfig(
         category=category,
         annual_primary_product_tpy=capacity_tpy,
+        feedstock_type=feedstock_type,
         electricity_case=electricity_case,
         ammonia_recovery_method=nh3_method if category == ScenarioCategory.AMMONIA_SCP else AmmoniaRecoveryMethod.VACUUM_STRIPPING,
         urea_recovery_method=urea_method if category == ScenarioCategory.BIO_UREA_SCP else UreaRecoveryMethod.EVAPORATION,
@@ -500,10 +526,10 @@ def main() -> None:
     reference_rows = reference_summary(current_eval.source_rows)
     summary = current_config_summary(current_config)
 
-    st.markdown("<div class='hero-title'>Formate Biorefinery TEA Dashboard</div>", unsafe_allow_html=True)
+    st.markdown("<div class='hero-title'>Biorefinery TEA Dashboard</div>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='hero-subtitle'>Integrated ammonia / urea + SCP techno-economics and cradle-to-gate LCA with "
-        "transparent assumptions, recovery-method comparisons, and a grounded Groq assistant.</div>",
+        "<div class='hero-subtitle'>Integrated ammonia / urea + SCP techno-economics and cradle-to-gate LCA across "
+        "three feedstock pathways (formate, H2/CO2, methanol) with transparent assumptions and a grounded Groq assistant.</div>",
         unsafe_allow_html=True,
     )
 
@@ -518,6 +544,7 @@ def main() -> None:
             _config_card(
                 "Current pathway basis",
                 [
+                    ("Feedstock", _FEED_LABELS.get(summary.get("feedstock_type", "formate"), "Formate")),
                     ("Primary pathway", _display_pathway_label(current_config)),
                     ("Primary capacity", f"{summary['annual_primary_product_tpy']:,.0f} t/y"),
                     ("Electricity", _ELEC_LABELS[summary["electricity_case"]]),

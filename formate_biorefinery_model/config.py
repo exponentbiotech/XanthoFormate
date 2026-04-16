@@ -17,6 +17,12 @@ class ScenarioCategory(str, Enum):
     BIO_UREA_SCP = "bio_urea_scp"
 
 
+class FeedstockType(str, Enum):
+    FORMATE = "formate"       # CO2 electrolysis -> formate -> fermentation (existing)
+    H2_CO2 = "h2_co2"         # Water electrolysis -> H2, purchased CO2 -> autotrophic fermentation
+    METHANOL = "methanol"     # Purchased methanol -> methylotrophic fermentation
+
+
 class ElectricityCase(str, Enum):
     US_GRID = "us_grid"
     RENEWABLE = "renewable"
@@ -115,6 +121,7 @@ class EconomicInputs:
     steam_price_usd_per_kg: float
     struvite_market_price_usd_per_kg: float       # Bulk struvite slow-release fertilizer benchmark
     map_fert_market_price_usd_per_kg: float       # MAP fertilizer (11-52-0) commodity benchmark
+    methanol_price_usd_per_kg: float              # Industrial methanol commodity price
 
     @classmethod
     def from_records(cls, records: Mapping[str, DataRecord]) -> "EconomicInputs":
@@ -145,6 +152,7 @@ class EconomicInputs:
             steam_price_usd_per_kg=values["steam_price_usd_per_kg"],
             struvite_market_price_usd_per_kg=values["struvite_market_price_usd_per_kg"],
             map_fert_market_price_usd_per_kg=values["map_fert_market_price_usd_per_kg"],
+            methanol_price_usd_per_kg=values["methanol_price_usd_per_kg"],
         )
 
 
@@ -164,6 +172,8 @@ class LCAFactors:
     biogenic_co2_kgco2e_per_kg: float       # Waste biogenic CO₂ (corn ethanol off-gas): only compression+transport burden
     dac_co2_kgco2e_per_kg: float            # Direct air capture — highest energy penalty
     membrane_kgco2e_per_m2: float
+    # Methanol supply chain
+    methanol_kgco2e_per_kg: float           # Cradle-to-gate GWP of purchased methanol feedstock
     # Biogenic carbon and system-expansion credits
     scp_carbon_fraction: float              # Mass fraction of C in dry SCP (≈ 0.47)
     scp_displacement_kgco2e_per_kg: float   # GWP of conventional protein displaced per kg SCP (soy meal, no LUC)
@@ -242,6 +252,23 @@ class TechnologyInputs:
     mvr_kwh_per_kg_urea: float
     mvr_steam_kg_per_kg_urea: float
     mvr_base_cost_usd: float
+    # --- H2/CO2 autotrophic feedstock (FeedstockType.H2_CO2) ---
+    h2_to_ammonia_kg_per_kg: float              # kg H2 consumed per kg NH3 produced
+    h2_to_urea_kg_per_kg: float                 # kg H2 consumed per kg urea produced
+    co2_to_biomass_h2co2_kg_per_kg: float       # kg CO2 required per kg SCP (CBB cycle)
+    scp_to_ammonia_h2co2_kg_per_kg: float       # kg SCP co-product per kg NH3 (autotrophic)
+    scp_to_urea_h2co2_kg_per_kg: float          # kg SCP co-product per kg urea (autotrophic)
+    electrolyzer_energy_kwh_per_mol_h2: float   # PEM water electrolysis energy per mol H2
+    water_kg_per_mol_h2: float                  # Water stoichiometry for H2 electrolysis
+    ammonia_productivity_h2co2_kg_per_m3_h: float  # Volumetric productivity on H2/CO2
+    urea_productivity_h2co2_kg_per_m3_h: float     # Volumetric productivity on H2/CO2
+    # --- Methanol methylotrophic feedstock (FeedstockType.METHANOL) ---
+    methanol_to_ammonia_kg_per_kg: float        # kg methanol consumed per kg NH3 produced
+    methanol_to_urea_kg_per_kg: float           # kg methanol consumed per kg urea produced
+    scp_to_ammonia_methanol_kg_per_kg: float    # kg SCP co-product per kg NH3 (methylotrophic)
+    scp_to_urea_methanol_kg_per_kg: float       # kg SCP co-product per kg urea (methylotrophic)
+    ammonia_productivity_methanol_kg_per_m3_h: float  # Volumetric productivity on methanol
+    urea_productivity_methanol_kg_per_m3_h: float     # Volumetric productivity on methanol
 
     @classmethod
     def from_records(cls, records: Mapping[str, DataRecord]) -> "TechnologyInputs":
@@ -252,6 +279,7 @@ class TechnologyInputs:
 class ScenarioConfig:
     category: ScenarioCategory
     annual_primary_product_tpy: float
+    feedstock_type: FeedstockType = FeedstockType.FORMATE
     electricity_case: ElectricityCase = ElectricityCase.US_GRID
     ammonia_recovery_method: AmmoniaRecoveryMethod = AmmoniaRecoveryMethod.VACUUM_STRIPPING
     urea_recovery_method: UreaRecoveryMethod = UreaRecoveryMethod.EVAPORATION

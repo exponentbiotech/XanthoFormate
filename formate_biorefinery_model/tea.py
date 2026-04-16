@@ -4,8 +4,10 @@ import math
 from dataclasses import dataclass
 from typing import Dict
 
-from .config import AmmoniaRecoveryMethod, EconomicInputs, ScenarioCategory  # noqa: F401
+from .config import AmmoniaRecoveryMethod, EconomicInputs, FeedstockType, ScenarioCategory  # noqa: F401
 from .process_blocks import ForegroundResults
+
+MINOR_CAPEX_THRESHOLD = 100_000.0
 
 
 @dataclass
@@ -14,6 +16,7 @@ class TEAResults:
     fixed_opex_usd_per_y: Dict[str, float]
     credits_usd_per_y: Dict[str, float]
     capex_purchase_usd: Dict[str, float]
+    capex_excluded_usd: Dict[str, float]
     metrics: Dict[str, float]
 
 
@@ -36,6 +39,7 @@ def _direct_labor_cost(result: ForegroundResults, economic: EconomicInputs) -> f
 
 def evaluate_tea(result: ForegroundResults, economic: EconomicInputs) -> TEAResults:
     ledger = result.ledger
+    config = result.scenario
 
     electricity_cost = ledger.total_electricity_kwh_per_y * economic.electricity_price_usd_per_kwh
     steam_cost = ledger.total_steam_kg_per_y * economic.steam_price_usd_per_kg
@@ -44,10 +48,10 @@ def evaluate_tea(result: ForegroundResults, economic: EconomicInputs) -> TEAResu
         + ledger.mass_kg_per_y.get("broth_water", 0.0)
     ) * economic.water_price_usd_per_kg
     wastewater_cost = ledger.mass_kg_per_y.get("wastewater", 0.0) * economic.wastewater_price_usd_per_kg
+    methanol_cost = ledger.mass_kg_per_y.get("methanol_feed", 0.0) * economic.methanol_price_usd_per_kg
     chemical_costs = {
         "naoh": ledger.mass_kg_per_y.get("naoh", 0.0) * economic.naoh_price_usd_per_kg,
         "h2so4": ledger.mass_kg_per_y.get("h2so4", 0.0) * economic.h2so4_price_usd_per_kg,
-        # h3po4 is a direct cost for MAP precipitation; also used as fermentation nutrient elsewhere
         "h3po4": ledger.mass_kg_per_y.get("h3po4", 0.0) * economic.h3po4_price_usd_per_kg,
         "mgcl2": ledger.mass_kg_per_y.get("mgcl2", 0.0) * economic.mgcl2_price_usd_per_kg,
         "co2": ledger.mass_kg_per_y.get("co2_feed", 0.0) * economic.co2_price_usd_per_kg,
@@ -61,20 +65,33 @@ def evaluate_tea(result: ForegroundResults, economic: EconomicInputs) -> TEAResu
         "steam": steam_cost,
         "water": water_cost,
         "wastewater": wastewater_cost,
+        "methanol": methanol_cost,
         **chemical_costs,
         "membrane_replacement": membrane_replacement,
     }
 
     direct_labor = _direct_labor_cost(result, economic)
     overhead = direct_labor * economic.admin_overhead_factor
-    purchase_total = sum(result.equipment_purchase_usd.values())
+
+    # ── CapEx: minor items only (<$100K per item), plus user-supplied major CapEx ──
+    # ORIGINAL FULL CAPEX — preserved for future reference:
+    #   purchase_total = sum(result.equipment_purchase_usd.values())
+    #   fixed_capital = purchase_total * economic.lang_factor
+    #   working_capital = fixed_capital * economic.working_capital_fraction
+    #   total_capital = fixed_capital + working_capital
+    #   annualized_capex = total_capital * capital_recovery_factor(economic.discount_rate, economic.plant_life_years)
+    minor_items = {k: v for k, v in result.equipment_purchase_usd.items() if 0 < v < MINOR_CAPEX_THRESHOLD}
+    capex_excluded = {k: v for k, v in result.equipment_purchase_usd.items() if v >= MINOR_CAPEX_THRESHOLD}
+    user_major_capex = config.user_overrides.get("major_capex_usd", 0.0)
+    purchase_total = sum(minor_items.values()) + user_major_capex
     fixed_capital = purchase_total * economic.lang_factor
     working_capital = fixed_capital * economic.working_capital_fraction
     total_capital = fixed_capital + working_capital
     annualized_capex = total_capital * capital_recovery_factor(economic.discount_rate, economic.plant_life_years)
     maintenance = fixed_capital * economic.maintenance_factor
+    electrolyzer_in_minor = minor_items.get("electrolyzer", 0.0)
     stack_replacement = (
-        result.equipment_purchase_usd.get("electrolyzer", 0.0)
+        electrolyzer_in_minor
         * economic.electrolyzer_stack_replacement_fraction
         / max(1.0, economic.electrolyzer_stack_life_years)
     )
@@ -169,6 +186,7 @@ def evaluate_tea(result: ForegroundResults, economic: EconomicInputs) -> TEAResu
         variable_opex_usd_per_y=variable_opex,
         fixed_opex_usd_per_y=fixed_opex,
         credits_usd_per_y=credits,
-        capex_purchase_usd=result.equipment_purchase_usd,
+        capex_purchase_usd=minor_items,
+        capex_excluded_usd=capex_excluded,
         metrics=metrics,
     )

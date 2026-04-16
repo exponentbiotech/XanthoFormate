@@ -7,6 +7,7 @@ from .config import (
     AmmoniaRecoveryMethod,
     CO2Source,
     ElectricityCase,
+    FeedstockType,
     ScenarioCategory,
     ScenarioConfig,
     UreaRecoveryMethod,
@@ -31,6 +32,7 @@ class ScenarioEvaluation:
         primary_name = "ammonia" if scenario.category == ScenarioCategory.AMMONIA_SCP else "urea"
         return {
             "scenario": scenario.category.value,
+            "feedstock_type": scenario.feedstock_type.value,
             "annual_primary_product_tpy": scenario.annual_primary_product_tpy,
             "electricity_case": scenario.electricity_case.value,
             "co2_source": scenario.co2_source.value,

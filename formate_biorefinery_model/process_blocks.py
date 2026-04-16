@@ -6,6 +6,7 @@ from typing import Dict, List
 from .config import (
     AmmoniaRecoveryMethod,
     EconomicInputs,
+    FeedstockType,
     ScenarioCategory,
     ScenarioConfig,
     TechnologyInputs,
@@ -23,6 +24,8 @@ UREA_N_FRACTION = 28.0 / 60.0
 UREA_C_FRACTION = 12.0 / 60.0
 FORMATE_C_FRACTION = 12.0 / 46.0
 FORMATE_MW_KG_PER_MOL = 0.046
+H2_MW_KG_PER_MOL = 0.002
+METHANOL_C_FRACTION = 12.0 / 32.0  # CH3OH, MW 32
 NH3_MW_KG_PER_MOL = 0.017
 NAOH_MW_KG_PER_MOL = 0.040
 
@@ -76,6 +79,49 @@ def _electrolysis(
         "h2_byproduct_kg": h2_kg,
         "co2_feed_kg": co2_kg,
         "electrolysis_water_kg": water_kg,
+    }
+
+
+def _h2_electrolysis(
+    annual_h2_kg: float,
+    annual_hours: float,
+    annual_scp_kg: float,
+    technology: TechnologyInputs,
+    economic: EconomicInputs,
+    ledger: StreamLedger,
+) -> Dict[str, float]:
+    """Water electrolysis producing H2 for autotrophic fermentation (H2/CO2 path)."""
+    h2_mol = annual_h2_kg / H2_MW_KG_PER_MOL
+    electricity_kwh = h2_mol * technology.electrolyzer_energy_kwh_per_mol_h2
+    water_kg = h2_mol * technology.water_kg_per_mol_h2
+    co2_kg = annual_scp_kg * technology.co2_to_biomass_h2co2_kg_per_kg
+    power_kw = electricity_kwh / max(1e-9, annual_hours)
+    capex = power_kw * economic.electrolyzer_installed_cost_usd_per_kw
+
+    ledger.add_mass("h2_feed", annual_h2_kg)
+    ledger.add_mass("co2_feed", co2_kg)
+    ledger.add_mass("electrolysis_water", water_kg)
+    ledger.add_electricity("electrolyzer", electricity_kwh)
+
+    return {
+        "electrolyzer_purchase_usd": capex,
+        "h2_byproduct_kg": 0.0,
+        "co2_feed_kg": co2_kg,
+        "electrolysis_water_kg": water_kg,
+    }
+
+
+def _methanol_feed(
+    annual_methanol_kg: float,
+    ledger: StreamLedger,
+) -> Dict[str, float]:
+    """Methanol purchased as OPEX feedstock for methylotrophic fermentation."""
+    ledger.add_mass("methanol_feed", annual_methanol_kg)
+    return {
+        "electrolyzer_purchase_usd": 0.0,
+        "h2_byproduct_kg": 0.0,
+        "co2_feed_kg": 0.0,
+        "electrolysis_water_kg": 0.0,
     }
 
 
@@ -220,6 +266,34 @@ def _scp_processing(
     }
 
 
+def _feedstock_yields(
+    config: ScenarioConfig,
+    technology: TechnologyInputs,
+) -> Dict[str, float]:
+    """Return feedstock-specific yield parameters for the given scenario."""
+    feed = config.feedstock_type
+    is_nh3 = config.category == ScenarioCategory.AMMONIA_SCP
+
+    if feed == FeedstockType.H2_CO2:
+        return {
+            "feedstock_to_primary_kg_per_kg": technology.h2_to_ammonia_kg_per_kg if is_nh3 else technology.h2_to_urea_kg_per_kg,
+            "scp_to_primary_kg_per_kg": technology.scp_to_ammonia_h2co2_kg_per_kg if is_nh3 else technology.scp_to_urea_h2co2_kg_per_kg,
+            "productivity_kg_per_m3_h": technology.ammonia_productivity_h2co2_kg_per_m3_h if is_nh3 else technology.urea_productivity_h2co2_kg_per_m3_h,
+        }
+    elif feed == FeedstockType.METHANOL:
+        return {
+            "feedstock_to_primary_kg_per_kg": technology.methanol_to_ammonia_kg_per_kg if is_nh3 else technology.methanol_to_urea_kg_per_kg,
+            "scp_to_primary_kg_per_kg": technology.scp_to_ammonia_methanol_kg_per_kg if is_nh3 else technology.scp_to_urea_methanol_kg_per_kg,
+            "productivity_kg_per_m3_h": technology.ammonia_productivity_methanol_kg_per_m3_h if is_nh3 else technology.urea_productivity_methanol_kg_per_m3_h,
+        }
+    else:  # FORMATE
+        return {
+            "feedstock_to_primary_kg_per_kg": technology.formate_to_ammonia_kg_per_kg if is_nh3 else technology.formate_to_urea_kg_per_kg,
+            "scp_to_primary_kg_per_kg": technology.scp_to_ammonia_kg_per_kg if is_nh3 else technology.scp_to_urea_kg_per_kg,
+            "productivity_kg_per_m3_h": technology.ammonia_productivity_kg_per_m3_h if is_nh3 else technology.urea_productivity_kg_per_m3_h,
+        }
+
+
 def simulate_foreground(
     config: ScenarioConfig,
     technology: TechnologyInputs,
@@ -228,20 +302,21 @@ def simulate_foreground(
     annual_hours = 8760.0 * technology.capacity_factor
     ledger = StreamLedger()
     notes: List[str] = []
+    feed = config.feedstock_type
+    yields = _feedstock_yields(config, technology)
 
     if config.category == ScenarioCategory.AMMONIA_SCP:
         sellable_primary_kg = config.annual_primary_product_kg
-        # MAP precipitation has its own recovery efficiency distinct from stripping
         nh3_recovery_eff = (
             technology.map_recovery_efficiency
             if config.ammonia_recovery_method == AmmoniaRecoveryMethod.STRUVITE_MAP
             else technology.ammonia_recovery_efficiency
         )
         upstream_primary_kg = sellable_primary_kg / max(1e-9, nh3_recovery_eff)
-        annual_formate_kg = upstream_primary_kg * technology.formate_to_ammonia_kg_per_kg
-        annual_scp_kg = upstream_primary_kg * technology.scp_to_ammonia_kg_per_kg
+        annual_feedstock_kg = upstream_primary_kg * yields["feedstock_to_primary_kg_per_kg"]
+        annual_scp_kg = upstream_primary_kg * yields["scp_to_primary_kg_per_kg"]
         broth_water_kg = upstream_primary_kg * technology.broth_water_kg_per_kg_ammonia
-        working_volume_m3 = upstream_primary_kg / max(1e-9, annual_hours * technology.ammonia_productivity_kg_per_m3_h)
+        working_volume_m3 = upstream_primary_kg / max(1e-9, annual_hours * yields["productivity_kg_per_m3_h"])
         product_n_fraction = NH3_N_FRACTION
         product_c_fraction = 0.0
         recovery_meta = _ammonia_recovery(config, sellable_primary_kg, annual_hours, technology, ledger)
@@ -249,23 +324,21 @@ def simulate_foreground(
             equipment_base_cost = technology.map_settler_base_cost_usd
             notes.append("MAP precipitation: MgCl2 + H3PO4 reagents; product is struvite fertilizer.")
         elif config.ammonia_recovery_method == AmmoniaRecoveryMethod.MAP_FERTILIZER:
-            # Membrane system (same as MEMBRANE) + granulation equipment
             equipment_base_cost = technology.map_fert_granulation_base_cost_usd
-            notes.append("MAP fertilizer route: membrane strip NH3, absorb in H3PO4 → NH4H2PO4 (11-52-0).")
+            notes.append("MAP fertilizer route: membrane strip NH3, absorb in H3PO4 -> NH4H2PO4 (11-52-0).")
         else:
             equipment_base_cost = technology.recovery_base_cost_usd
             notes.append("Ammonia pathway uses recovery-specific caustic and electricity loads.")
     else:
         sellable_primary_kg = config.annual_primary_product_kg
         upstream_primary_kg = sellable_primary_kg / max(1e-9, technology.urea_recovery_efficiency)
-        annual_formate_kg = upstream_primary_kg * technology.formate_to_urea_kg_per_kg
-        annual_scp_kg = upstream_primary_kg * technology.scp_to_urea_kg_per_kg
+        annual_feedstock_kg = upstream_primary_kg * yields["feedstock_to_primary_kg_per_kg"]
+        annual_scp_kg = upstream_primary_kg * yields["scp_to_primary_kg_per_kg"]
         broth_water_kg = upstream_primary_kg * technology.broth_water_kg_per_kg_urea
-        working_volume_m3 = upstream_primary_kg / max(1e-9, annual_hours * technology.urea_productivity_kg_per_m3_h)
+        working_volume_m3 = upstream_primary_kg / max(1e-9, annual_hours * yields["productivity_kg_per_m3_h"])
         product_n_fraction = UREA_N_FRACTION
         product_c_fraction = UREA_C_FRACTION
         recovery_meta = _urea_recovery(config, sellable_primary_kg, annual_hours, technology, ledger)
-        # MVR has higher CapEx but lower steam OPEX; single-effect is cheaper to install
         if config.urea_recovery_method == UreaRecoveryMethod.MVR_CRYSTALLIZATION:
             equipment_base_cost = technology.mvr_base_cost_usd
             notes.append("MVR crystallization: electricity-driven evaporation, minimal steam.")
@@ -273,7 +346,17 @@ def simulate_foreground(
             equipment_base_cost = technology.urea_recovery_base_cost_usd
             notes.append("Bio-urea pathway is a screening case with stoichiometric and recovery placeholders.")
 
-    electrolysis_meta = _electrolysis(annual_formate_kg, annual_hours, technology, economic, ledger)
+    # ── Upstream feedstock supply (feedstock-type dependent) ──────────
+    if feed == FeedstockType.H2_CO2:
+        upstream_meta = _h2_electrolysis(annual_feedstock_kg, annual_hours, annual_scp_kg, technology, economic, ledger)
+        notes.append(f"H2/CO2 autotrophic path: {annual_feedstock_kg / 1000.0:,.0f} t/y H2 from water electrolysis.")
+    elif feed == FeedstockType.METHANOL:
+        upstream_meta = _methanol_feed(annual_feedstock_kg, ledger)
+        notes.append(f"Methanol methylotrophic path: {annual_feedstock_kg / 1000.0:,.0f} t/y purchased methanol.")
+    else:
+        upstream_meta = _electrolysis(annual_feedstock_kg, annual_hours, technology, economic, ledger)
+        notes.append("Formate electrochemical path: CO2 electrolysis to formate.")
+
     n2_required_kg = sellable_primary_kg * product_n_fraction + annual_scp_kg * technology.nitrogen_mass_fraction_scp
     air_compression_kwh = n2_required_kg * technology.air_compression_kwh_per_kg_n2
     agitation_kwh = working_volume_m3 * annual_hours * technology.agitation_aeration_kwh_per_m3_h
@@ -287,7 +370,7 @@ def simulate_foreground(
     actual_primary_rate_kg_per_day = sellable_primary_kg / 365.0
     scp_rate_kg_per_day = annual_scp_kg / 365.0
     equipment_purchase_usd = {
-        "electrolyzer": electrolysis_meta["electrolyzer_purchase_usd"],
+        "electrolyzer": upstream_meta["electrolyzer_purchase_usd"],
         "bioreactor": _scale_cost(
             technology.bioreactor_base_cost_usd,
             working_volume_m3,
@@ -310,7 +393,14 @@ def simulate_foreground(
     if recovery_meta.get("membrane_area_m2", 0.0) > 0.0:
         equipment_purchase_usd["recovery_membrane"] = recovery_meta["membrane_area_m2"] * economic.membrane_cost_usd_per_m2
 
-    carbon_in_kg = annual_formate_kg * FORMATE_C_FRACTION
+    # ── Carbon balance (feedstock-type dependent) ────────────────────
+    if feed == FeedstockType.H2_CO2:
+        carbon_in_kg = upstream_meta["co2_feed_kg"] * (12.0 / 44.0)
+    elif feed == FeedstockType.METHANOL:
+        carbon_in_kg = annual_feedstock_kg * METHANOL_C_FRACTION
+    else:
+        carbon_in_kg = annual_feedstock_kg * FORMATE_C_FRACTION
+
     carbon_to_primary_kg = sellable_primary_kg * product_c_fraction
     carbon_to_scp_kg = annual_scp_kg * technology.carbon_mass_fraction_scp
     carbon_to_offgas_kg = carbon_in_kg - carbon_to_primary_kg - carbon_to_scp_kg

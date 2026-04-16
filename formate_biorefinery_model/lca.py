@@ -77,6 +77,9 @@ def evaluate_lca(
     if cfg.use_scp_displacement_credit:
         scp_displacement_credit = -(result.annual_scp_kg * lca_factors.scp_displacement_kgco2e_per_kg)
 
+    # --- 5. Methanol supply chain burden ---
+    methanol_feed_kg = ledger.mass_kg_per_y.get("methanol_feed", 0.0)
+
     contributions: Dict[str, float] = {
         "electricity":               ledger.total_electricity_kwh_per_y * electricity_factor,
         "steam":                     ledger.total_steam_kg_per_y * lca_factors.steam_kgco2e_per_kg,
@@ -94,6 +97,7 @@ def evaluate_lca(
         "mgcl2":                     ledger.mass_kg_per_y.get("mgcl2", 0.0)
                                      * lca_factors.mgcl2_kgco2e_per_kg,
         "co2_supply":                co2_feed_kg * co2_supply_factor,
+        "methanol_supply":           methanol_feed_kg * lca_factors.methanol_kgco2e_per_kg,
         "membrane_replacement":      ledger.area_m2.get("recovery_membrane", 0.0) / 3.0
                                      * lca_factors.membrane_kgco2e_per_m2,
         # Credits (negative by convention)
