@@ -241,6 +241,50 @@ def _inject_css() -> None:
             border-color: rgba(219,228,255,0.24) !important;
             color: #eef2ff !important;
         }
+        /* Floating chat launcher — visible from anywhere on the page.
+           Streamlit ≥1.36 exposes the widget key as a CSS class on the
+           element-container, so we target .st-key-float_open_chat. */
+        .st-key-float_open_chat {
+            position: fixed !important;
+            bottom: 28px !important;
+            right: 28px !important;
+            width: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            z-index: 9999 !important;
+        }
+        .st-key-float_open_chat button {
+            border-radius: 999px !important;
+            padding: 14px 22px !important;
+            font-weight: 700 !important;
+            font-size: 0.95rem !important;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22) !important;
+            transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+            background: #0b63ce !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(255,255,255,0.18) !important;
+            white-space: nowrap !important;
+        }
+        .st-key-float_open_chat button:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 9px 22px rgba(15, 23, 42, 0.28) !important;
+            background: #094fa6 !important;
+        }
+        .st-key-float_open_chat button:focus,
+        .st-key-float_open_chat button:active {
+            outline: 3px solid rgba(11, 99, 206, 0.35) !important;
+            outline-offset: 2px !important;
+        }
+        @media (max-width: 768px) {
+            .st-key-float_open_chat {
+                bottom: 16px !important;
+                right: 16px !important;
+            }
+            .st-key-float_open_chat button {
+                padding: 12px 18px !important;
+                font-size: 0.9rem !important;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -870,6 +914,30 @@ def main() -> None:
         "three feedstock pathways (formate, H2/CO2, methanol) with transparent assumptions and a grounded Groq assistant.</div>",
         unsafe_allow_html=True,
     )
+
+    # Floating chat launcher — visible from anywhere on the page (CSS-pinned).
+    # Resolve the chosen Groq model from session state with a sensible fallback,
+    # since the model selector itself renders later in the page.
+    _saved_choice = st.session_state.get("groq_model_choice", DEFAULT_GROQ_MODEL)
+    if _saved_choice == "custom":
+        _floating_model = st.session_state.get("custom_groq_model", DEFAULT_GROQ_MODEL)
+    else:
+        _floating_model = _saved_choice
+    _chat_ready = groq_available() and bool(api_key)
+    if st.button(
+        "💬 Ask the assistant",
+        key="float_open_chat",
+        type="primary",
+        disabled=not _chat_ready,
+        help=("Ask the biorefinery assistant about the current scenario."
+              if _chat_ready
+              else "Add a Groq API key in the sidebar to enable chat."),
+    ):
+        _open_chat_dialog(
+            api_key=api_key,
+            model=_floating_model,
+            current_eval=current_eval,
+        )
 
     _section_header(
         "Scenario Basis",
