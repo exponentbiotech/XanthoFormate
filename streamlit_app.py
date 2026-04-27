@@ -262,6 +262,20 @@ _FIG_TITLES = {
     "10_urea_recovery_compare": "Urea Recovery Method Comparison",
 }
 
+_FIGURE_DISPLAY_ORDER = [
+    "08_executive_summary",
+    "01_market_viability",
+    "02_cost_structure",
+    "03_scale_margin",
+    "04_cashflow_npv",
+    "05_cost_vs_gwp",
+    "09_nh3_recovery_compare",
+    "10_urea_recovery_compare",
+    "06_sensitivity_nh3",
+    "07_sensitivity_urea",
+    "00_process_flow",
+]
+
 _COMMON_FORMULA_DEFINITIONS = [
     "M_p = annual sellable primary product mass (kg/y).",
     "C_var = total variable operating cost ($/y).",
@@ -280,7 +294,7 @@ _FIGURE_FORMULAS: Dict[str, List[Tuple[str, str, str]]] = {
         (
             "Mass-balance logic",
             r"\text{Annual flow}_{i} = M_p \times \text{route-specific stoichiometric factor}_{i}",
-            "The foreground model scales each material and utility flow from the selected annual primary-product capacity and the chosen NH3 or urea recovery route.",
+            "The model scales each material and utility flow from the selected annual primary-product capacity and the chosen NH3 or urea recovery route.",
         ),
     ],
     "01_market_viability": [
@@ -541,11 +555,40 @@ def _md_escape(text: str) -> str:
     return str(text).replace("$", r"\$")
 
 
+def _plain_language_note(text: str) -> str:
+    replacements = {
+        "run_baseline_cases().": "the baseline scenario set.",
+        "run_baseline_cases()": "the baseline scenario set",
+        "run_best_methods_grid()": "the curated best-method comparison set",
+        "run_lca_sensitivity_grid()": "the climate-accounting sensitivity set",
+        "run_best_methods_negative_gwp_grid()": "the negative-GWP screening set",
+        "run_recovery_comparison(ScenarioCategory.AMMONIA_SCP, capacity_tpy)": "the NH3 recovery-method comparison at the selected capacity",
+        "run_recovery_comparison(ScenarioCategory.BIO_UREA_SCP, capacity_tpy)": "the urea recovery-method comparison at the selected capacity",
+        "run_sensitivity_cases()": "the one-at-a-time sensitivity calculation",
+        "ScenarioConfig": "the current scenario settings",
+        "ScenarioCategory.AMMONIA_SCP": "the NH3 + SCP pathway",
+        "ScenarioCategory.BIO_UREA_SCP": "the urea + SCP pathway",
+        "ScenarioCategory": "the selected product pathway",
+        "SENSITIVITY_PARAMS": "the sensitivity parameter list",
+        "TEAResults": "the economic results",
+        "LCAResults": "the climate results",
+        "process_blocks.py": "the process model",
+        "tea.py": "the economic model",
+        "net_primary_lcox_usd_per_kg": "net LCOX",
+        "benchmark_primary_revenue_usd_per_y": "benchmark annual product revenue",
+        "capacity_tpy": "selected annual capacity",
+    }
+    clean = str(text)
+    for old, new in replacements.items():
+        clean = clean.replace(old, new)
+    return clean
+
+
 def _render_figure_methodology(fig_id: str) -> None:
     meta = figure_metadata(fig_id)
     formulas = _FIGURE_FORMULAS.get(fig_id, [])
     with st.expander("How was this figure calculated?", expanded=False):
-        st.markdown(f"**What is plotted** — {meta.get('what_is_plotted', '')}")
+        st.markdown(f"**What is plotted** — {_plain_language_note(meta.get('what_is_plotted', ''))}")
         if fig_id != "00_process_flow":
             st.markdown("**Common terms used below:**")
             for item in _COMMON_FORMULA_DEFINITIONS:
@@ -558,10 +601,10 @@ def _render_figure_methodology(fig_id: str) -> None:
         if assumptions:
             st.markdown("**Important assumptions:**")
             for item in assumptions:
-                st.markdown(f"- {item}")
+                st.markdown(f"- {_plain_language_note(item)}")
         guidance = meta.get("interpretation_guidance", "")
         if guidance:
-            st.markdown(f"**How to read it** — {guidance}")
+            st.markdown(f"**How to read it** — {_plain_language_note(guidance)}")
 
 
 def _config_card(title: str, rows: List[tuple[str, str]]) -> None:
@@ -831,26 +874,40 @@ def main() -> None:
     _section_header(
         "Figures",
         "Detailed figures",
-        "Every figure below uses the exact same model state shown in the cards above.",
+        "Choose one figure at a time. The displayed figure uses the exact same model state shown in the cards above.",
     )
-    for fig_id in figure_ids():
-        title = _FIG_TITLES.get(fig_id, fig_id)
-        with st.expander(title, expanded=False):
-            _render_figure_methodology(fig_id)
-            with st.spinner(f"Rendering {title}..."):
-                try:
-                    fig = build_figure(
-                        fig_id,
-                        comparison_grid,
-                        current_config=current_config,
-                        overrides=overrides,
-                        nh3_method=nh3_method,
-                        urea_method=urea_method,
-                    )
-                    st.pyplot(fig, use_container_width=True)
-                    fig.clf()
-                except Exception as exc:
-                    st.error(f"Could not render figure: {exc}")
+    available_figures = figure_ids()
+    ordered_figures = [
+        fig_id for fig_id in _FIGURE_DISPLAY_ORDER
+        if fig_id in available_figures
+    ] + [
+        fig_id for fig_id in available_figures
+        if fig_id not in _FIGURE_DISPLAY_ORDER
+    ]
+    selected_fig_id = st.selectbox(
+        "Select figure",
+        options=ordered_figures,
+        index=0,
+        format_func=lambda fig_id: _FIG_TITLES.get(fig_id, fig_id),
+        key="selected_figure",
+    )
+    selected_title = _FIG_TITLES.get(selected_fig_id, selected_fig_id)
+    st.markdown(f"### {selected_title}")
+    _render_figure_methodology(selected_fig_id)
+    with st.spinner(f"Rendering {selected_title}..."):
+        try:
+            fig = build_figure(
+                selected_fig_id,
+                comparison_grid,
+                current_config=current_config,
+                overrides=overrides,
+                nh3_method=nh3_method,
+                urea_method=urea_method,
+            )
+            st.pyplot(fig, use_container_width=True)
+            fig.clf()
+        except Exception as exc:
+            st.error(f"Could not render figure: {exc}")
 
     _section_header(
         "Reference Trace",
