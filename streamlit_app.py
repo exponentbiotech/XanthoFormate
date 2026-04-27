@@ -634,6 +634,75 @@ def build_figure(
     return builders[fig_id]()
 
 
+@st.dialog("Biorefinery Assistant", width="large")
+def _open_chat_dialog(
+    api_key: str,
+    model: str,
+    current_eval,
+) -> None:
+    """Pop-up chat modal so the assistant's reply is visible without scrolling.
+
+    Uses Streamlit's dialog (which is fragment-like) — when the user submits
+    inside ``st.chat_input``, only this dialog re-renders, so the modal stays
+    open with the new message visible at the top of the viewport.
+    """
+    if "groq_messages" not in st.session_state:
+        st.session_state.groq_messages = []
+
+    scenario = current_eval.foreground.scenario
+    st.caption(
+        f"Model: `{model}`. Grounded in the active scenario "
+        f"({_display_pathway_label(scenario)}, "
+        f"{int(scenario.annual_primary_product_tpy):,} t/y)."
+    )
+
+    history = st.container(height=420)
+    with history:
+        if not st.session_state.groq_messages:
+            st.caption(
+                "Ask about the current scenario, which route looks most attractive, "
+                "or how a slider change would affect cost and GWP."
+            )
+        for message in st.session_state.groq_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    prompt = st.chat_input("Ask about the current scenario, outputs, or a hypothetical...")
+    if prompt:
+        st.session_state.groq_messages.append({"role": "user", "content": prompt})
+        with history:
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    snapshot = app_context_snapshot(
+                        current_eval,
+                        current_eval.source_rows,
+                        active_figure_ids=figure_ids(),
+                    )
+                    try:
+                        reply = ask_groq(
+                            api_key=api_key,
+                            question=prompt,
+                            snapshot=snapshot,
+                            history=st.session_state.groq_messages[:-1],
+                            model=model,
+                        )
+                    except Exception as exc:
+                        reply = f"Groq request failed: {exc}"
+                st.markdown(reply)
+        st.session_state.groq_messages.append({"role": "assistant", "content": reply})
+
+    btn_col1, btn_col2 = st.columns([1, 1])
+    with btn_col1:
+        if st.button("Clear conversation", key="clear_groq_in_dialog", use_container_width=True):
+            st.session_state.groq_messages = []
+            st.rerun()
+    with btn_col2:
+        if st.button("Close", key="close_groq_dialog", type="primary", use_container_width=True):
+            st.rerun()
+
+
 def main() -> None:
     if not _check_password():
         st.stop()
@@ -920,8 +989,13 @@ def main() -> None:
     _section_header(
         "Assistant",
         "Ask the biorefinery assistant",
-        "Fast Groq chat grounded in the current scenario state. The default model is optimized for responsiveness.",
+        "Fast Groq chat grounded in the current scenario state. Opens in a pop-up so the response stays in view.",
     )
+
+    if "groq_messages" not in st.session_state:
+        st.session_state.groq_messages = []
+    chat_available = groq_available() and bool(api_key)
+
     with st.container(border=True):
         top_left, top_mid, top_right = st.columns([1.2, 2.6, 1.0])
         with top_left:
@@ -950,44 +1024,50 @@ def main() -> None:
                     st.session_state.groq_messages = []
                     st.rerun()
 
-        if "groq_messages" not in st.session_state:
-            st.session_state.groq_messages = []
-
-        history_container = st.container(height=320)
-        with history_container:
-            if not st.session_state.groq_messages:
-                st.caption("Ask about the current scenario, which route looks most attractive, or how a slider change would affect cost and GWP.")
-            for message in st.session_state.groq_messages:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-
-    chat_available = groq_available() and bool(api_key)
-    if chat_available:
-        prompt = st.chat_input("Ask about the current scenario, outputs, or a hypothetical...")
-        if prompt:
-            st.session_state.groq_messages.append({"role": "user", "content": prompt})
-            snapshot = app_context_snapshot(
-                current_eval,
-                current_eval.source_rows,
-                active_figure_ids=figure_ids(),
+        # Inline "launcher" row: open-chat button + brief preview of the latest exchange.
+        launch_col, preview_col = st.columns([1.0, 3.0])
+        with launch_col:
+            open_chat = st.button(
+                "💬  Open chat",
+                key="open_chat_dialog",
+                type="primary",
+                use_container_width=True,
+                disabled=not chat_available,
+                help=None if chat_available
+                     else "Provide a Groq API key in the sidebar to enable chat.",
             )
-            try:
-                reply = ask_groq(
-                    api_key=api_key,
-                    question=prompt,
-                    snapshot=snapshot,
-                    history=st.session_state.groq_messages[:-1],
-                    model=groq_model,
+        with preview_col:
+            msgs = st.session_state.groq_messages
+            if not msgs:
+                st.caption(
+                    "Click *Open chat* to ask about the current scenario, which route looks most attractive, "
+                    "or how a slider change would affect cost and GWP. Responses appear in a pop-up window."
                 )
-            except Exception as exc:
-                reply = f"Groq request failed: {exc}"
+            else:
+                last_user = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "")
+                last_asst = next((m["content"] for m in reversed(msgs) if m["role"] == "assistant"), "")
 
-            st.session_state.groq_messages.append({"role": "assistant", "content": reply})
-            st.rerun()
-    elif not groq_available():
+                def _preview(text: str, n: int = 220) -> str:
+                    text = " ".join(text.split())
+                    return text if len(text) <= n else text[: n - 1].rstrip() + "…"
+
+                if last_user:
+                    st.markdown(f"**You:** {_preview(last_user, 160)}")
+                if last_asst:
+                    st.markdown(f"**Assistant:** {_preview(last_asst, 280)}")
+                st.caption(f"{len(msgs)} message(s) in this session — click *Open chat* to continue.")
+
+    if not groq_available():
         st.info("The `groq` package is not installed in this environment.")
-    else:
+    elif not api_key:
         st.info("Add a Groq API key in the sidebar or set `GROQ_API_KEY` in deployment secrets to enable chat.")
+
+    if open_chat and chat_available:
+        _open_chat_dialog(
+            api_key=api_key,
+            model=groq_model,
+            current_eval=current_eval,
+        )
 
 
 if __name__ == "__main__":
