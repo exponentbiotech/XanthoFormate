@@ -280,7 +280,10 @@ class ScenarioConfig:
     category: ScenarioCategory
     annual_primary_product_tpy: float
     feedstock_type: FeedstockType = FeedstockType.FORMATE
-    electricity_case: ElectricityCase = ElectricityCase.US_GRID
+    # Design-basis electricity is renewable (PPA wind/solar, IPCC AR5 WGIII
+    # Annex III lifecycle factor). The grid case remains available as a
+    # downside comparator and appears in the LCA waterfall figure.
+    electricity_case: ElectricityCase = ElectricityCase.RENEWABLE
     ammonia_recovery_method: AmmoniaRecoveryMethod = AmmoniaRecoveryMethod.VACUUM_STRIPPING
     urea_recovery_method: UreaRecoveryMethod = UreaRecoveryMethod.EVAPORATION
     use_scp_credit: bool = True

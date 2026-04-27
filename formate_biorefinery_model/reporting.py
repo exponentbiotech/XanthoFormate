@@ -139,17 +139,17 @@ def _require_mpl() -> None:
 def _style() -> None:
     _require_mpl()
     plt.rcParams.update({
-        "figure.dpi": 130, "savefig.dpi": 300, "savefig.bbox": "tight",
+        "figure.dpi": 140, "savefig.dpi": 320, "savefig.bbox": "tight",
         "font.family": "sans-serif",
         "font.sans-serif": ["Helvetica Neue", "Arial", "DejaVu Sans"],
-        "font.size": 10.5, "axes.titlesize": 13.5, "axes.titleweight": "600",
-        "axes.labelsize": 11, "axes.edgecolor": "#444444", "axes.linewidth": 0.7,
+        "font.size": 13, "axes.titlesize": 16, "axes.titleweight": "600",
+        "axes.labelsize": 13.5, "axes.edgecolor": "#444444", "axes.linewidth": 0.7,
         "axes.grid": True, "axes.axisbelow": True, "axes.facecolor": "#FAFAFA",
         "grid.alpha": 0.25, "grid.linewidth": 0.45, "grid.color": "#CCCCCC",
         "figure.facecolor": "white",
         "legend.frameon": True, "legend.framealpha": 0.92,
-        "legend.edgecolor": "#CCCCCC", "legend.fontsize": 8.5,
-        "xtick.labelsize": 9.5, "ytick.labelsize": 9.5,
+        "legend.edgecolor": "#CCCCCC", "legend.fontsize": 11,
+        "xtick.labelsize": 11.5, "ytick.labelsize": 11.5,
     })
 
 
@@ -679,7 +679,7 @@ def plot_cost_vs_gwp(
     from .run_scenarios import run_lca_sensitivity_grid  # avoid circular at module level
 
     _style()
-    fig, axes = plt.subplots(1, 3, figsize=(20, 7.5))
+    fig, axes = plt.subplots(1, 3, figsize=(24, 9.5))
     ax_wf, ax_sc, ax_stk = axes
 
     # ---------- data ----------
@@ -772,13 +772,19 @@ def plot_cost_vs_gwp(
             )
         )
 
+    # ── Plot scatter points (one per curated method, only the largest capacity
+    #    that achieves net-negative GWP, so labels don't collide) ────────────
+    plotted_xy: List[tuple[float, float, str, dict]] = []
+    seen_method_keys: set[str] = set()
     for row in best_rows:
         method_key = _method_key(row)
         sty = BEST_METHOD_STYLE.get(method_key, {"color": "#777777", "marker": "o", "ls": "-", "label": method_key})
         gwp_x = row.lca.metrics["primary_product_gwp_kgco2e_per_kg"]
         lcox_y = row.tea.metrics["net_primary_lcox_usd_per_kg"]
-        # Log-scaled marker; small (80) at 100 t/y, medium (150) at 1 000, large (220) at 10 000
-        size = 80.0 + 70.0 * math.log10(max(1.0, row.foreground.scenario.annual_primary_product_tpy) / 100.0)
+        # Log-scaled marker; small (110) at 100 t/y, medium (200) at 1 000, large (290) at 10 000
+        size = 110.0 + 90.0 * math.log10(max(1.0, row.foreground.scenario.annual_primary_product_tpy) / 100.0)
+        legend_label = sty["label"] if method_key not in seen_method_keys else "_nolegend_"
+        seen_method_keys.add(method_key)
         ax_sc.scatter(
             [gwp_x],
             [lcox_y],
@@ -787,53 +793,92 @@ def plot_cost_vs_gwp(
             marker=sty["marker"],
             edgecolors="white",
             linewidths=1.0,
-            alpha=0.88,
+            alpha=0.92,
             zorder=3,
-            label=sty["label"],
+            label=legend_label,
         )
-        cap = row.foreground.scenario.annual_primary_product_tpy
-        ax_sc.annotate(
-            f"{int(cap):,} t/y",
-            (gwp_x, lcox_y),
-            textcoords="offset points",
-            xytext=(7, 5),
-            fontsize=7,
-            color=sty["color"],
-        )
+        plotted_xy.append((gwp_x, lcox_y, str(int(row.foreground.scenario.annual_primary_product_tpy)), sty))
 
-    # Haber-Bosch reference
-    ax_sc.scatter(HB_GWP_NG, 0.60, s=130, color="#E15759", marker="X",
+    # ── Anti-collision label placement ─────────────────────────────────────
+    # Group points that are within a small bounding box and stagger their
+    # leader-line callouts vertically so capacity labels never overlap.
+    def _is_close(a, b, dx=0.6, dy=0.18) -> bool:
+        return abs(a[0] - b[0]) < dx and abs(a[1] - b[1]) < dy
+
+    clusters: List[List[int]] = []
+    for i, p in enumerate(plotted_xy):
+        placed = False
+        for cl in clusters:
+            if _is_close(p, plotted_xy[cl[0]]):
+                cl.append(i)
+                placed = True
+                break
+        if not placed:
+            clusters.append([i])
+
+    LABEL_OFFSETS_Y = [22, -22, 36, -36, 54, -54]
+    for cl in clusters:
+        for rank, idx in enumerate(cl):
+            gwp_x, lcox_y, cap_str, sty = plotted_xy[idx]
+            dy = LABEL_OFFSETS_Y[rank % len(LABEL_OFFSETS_Y)]
+            dx = 12 if dy >= 0 else -12
+            ha = "left" if dx >= 0 else "right"
+            ax_sc.annotate(
+                f"{int(cap_str):,} t/y",
+                (gwp_x, lcox_y),
+                textcoords="offset points",
+                xytext=(dx, dy),
+                fontsize=10,
+                color=sty["color"],
+                fontweight="600",
+                ha=ha,
+                arrowprops=dict(arrowstyle="-", color=sty["color"],
+                                 lw=0.7, alpha=0.6, shrinkA=2, shrinkB=4),
+            )
+
+    # ── Haber-Bosch reference (placed inside axes with breathing room) ─────
+    ax_sc.scatter(HB_GWP_NG, 0.60, s=190, color="#E15759", marker="X",
                   edgecolors="white", linewidths=1.0, zorder=5)
     ax_sc.annotate("Haber-Bosch\n(nat. gas)",
                    (HB_GWP_NG, 0.60), textcoords="offset points",
-                   xytext=(-15, 14), fontsize=7.5, color="#E15759", fontweight="600",
-                   arrowprops=dict(arrowstyle="-", color="#E15759", lw=0.6))
+                   xytext=(-22, 30), fontsize=10.5, color="#E15759", fontweight="700",
+                   ha="right",
+                   arrowprops=dict(arrowstyle="-", color="#E15759", lw=0.7, alpha=0.8))
 
     handles, labels = ax_sc.get_legend_handles_labels()
     handles.append(Line2D([0], [0], marker="X", color="w",
-                          markerfacecolor="#E15759", markersize=9,
-                          label="Haber-Bosch"))
-    labels.append("Haber-Bosch")
-    ax_sc.legend(handles, labels, fontsize=7.5, loc="upper right")
+                          markerfacecolor="#E15759", markersize=11,
+                          label="Haber-Bosch (nat. gas)"))
+    labels.append("Haber-Bosch (nat. gas)")
+    ax_sc.legend(handles, labels, fontsize=10, loc="lower right",
+                  framealpha=0.95, edgecolor="#CCCCCC")
 
     if best_rows:
         gwp_min = min(row.lca.metrics["primary_product_gwp_kgco2e_per_kg"] for row in best_rows)
-        ax_sc.set_xlim(gwp_min - 0.6, HB_GWP_NG + 0.8)
+        # Extra right-side room (HB label + legend) and small left margin.
+        ax_sc.set_xlim(gwp_min - 0.8, HB_GWP_NG + 1.8)
+        # Vertical headroom so leader lines don't clip.
+        y_min = min(row.tea.metrics["net_primary_lcox_usd_per_kg"] for row in best_rows)
+        y_max = max(row.tea.metrics["net_primary_lcox_usd_per_kg"] for row in best_rows)
+        y_span = max(0.4, y_max - y_min)
+        ax_sc.set_ylim(y_min - 0.35 * y_span, max(y_max + 0.45 * y_span, 0.95))
     ax_sc.axvline(0.0, color="#777777", lw=0.7, ls=":")
-    ax_sc.text(
-        0.02,
-        0.03,
-        "Only the most attractive curated cases with net-negative GWP are shown.\n"
-        "Assumptions: renewable electricity, biogenic CO\u2082, SCP C credit, protein displacement.",
-        transform=ax_sc.transAxes,
-        fontsize=7.0,
-        color="#666666",
-        ha="left",
-        va="bottom",
-    )
     ax_sc.set_xlabel("Net GWP (kg CO\u2082e / kg product) — favorable LCA case")
     ax_sc.set_ylabel("Net LCOX (USD / kg)")
     ax_sc.set_title("b)  Cost vs Climate Intensity", pad=12)
+    # Caption below the axes (NOT inside it) so it never overlaps data.
+    # Plain (non-italic) Helvetica/Arial because italic fallbacks drop subscripts.
+    ax_sc.text(
+        0.5,
+        -0.18,
+        "Only the most attractive curated cases with net-negative GWP are shown.\n"
+        "Assumptions: renewable electricity, biogenic CO$_2$, SCP C credit, protein displacement.",
+        transform=ax_sc.transAxes,
+        fontsize=10,
+        color="#666666",
+        ha="center",
+        va="top",
+    )
 
     # ================================================================
     # Panel c — GWP contribution stacked bar (design-basis: grid, biogenic CO2)
@@ -853,9 +898,11 @@ def plot_cost_vs_gwp(
         ("scp_displacement_credit","Protein displacement",     "#1B6535"),
     ]
 
-    # Use grid + biogenic CO2 rows (index 1 for each category)
-    stk_nh3  = nh3_rows[1]
-    stk_urea = urea_rows[1]
+    # Design-basis contribution analysis: renewable + biogenic CO2 + biogenic-C
+    # credit (index 2 of run_lca_sensitivity_grid). The grid case still appears
+    # in panel (a) as the downside comparator.
+    stk_nh3  = nh3_rows[2]
+    stk_urea = urea_rows[2]
     stk_cats = [stk_nh3, stk_urea]
     stk_labels_ax = ["NH\u2083 + SCP", "Urea + SCP"]
     stk_x = np.arange(len(stk_cats))
@@ -896,16 +943,17 @@ def plot_cost_vs_gwp(
     ax_stk.set_xticks(stk_x)
     ax_stk.set_xticklabels(stk_labels_ax, fontsize=10)
     ax_stk.set_ylabel("GWP contribution (kg CO\u2082e / kg product)")
-    ax_stk.set_title("c)  Contribution Analysis\n(grid power, biogenic CO\u2082)", pad=12)
-    ax_stk.legend(fontsize=7, loc="upper right", ncol=1)
+    ax_stk.set_title("c)  Contribution Analysis\n(renewable power, biogenic CO\u2082)", pad=12)
+    ax_stk.legend(fontsize=10, loc="upper right", ncol=1, framealpha=0.95)
 
     fig.suptitle(
         "Life Cycle Assessment \u2014 GWP by Accounting Scenario and Contribution\n"
-        "Design basis: CO\u2082 from corn-ethanol off-gas (biogenic waste), "
-        "US grid electricity",
-        fontsize=12, fontweight="bold", y=1.02,
+        "Design basis: renewable electricity (PPA wind/solar, IPCC AR5 lifecycle), "
+        "biogenic CO\u2082 from corn-ethanol off-gas. "
+        "US grid kept as a downside comparator in panel (a).",
+        fontsize=14, fontweight="bold", y=1.02,
     )
-    fig.tight_layout(rect=[0, 0.02, 1, 0.97])
+    fig.tight_layout(rect=[0, 0.04, 1, 0.97])
     _stamp(fig)
     return fig
 
