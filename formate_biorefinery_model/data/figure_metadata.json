@@ -56,14 +56,15 @@
   },
   "05_cost_vs_gwp": {
     "title": "LCA Deep-Dive and Cost vs Climate Intensity",
-    "what_is_plotted": "Net GWP by accounting scenario, cost vs GWP for the most attractive negative-GWP cases, and contribution analysis for the design-basis LCA case.",
-    "calculation_basis": "Panel a uses run_lca_sensitivity_grid(). Panel b uses run_best_methods_negative_gwp_grid() and retains the lowest net-LCOX negative-GWP case per curated method family. Panel c stacks LCAResults contributions normalized by primary product mass.",
+    "what_is_plotted": "Net GWP by accounting scenario, cost vs GWP for all curated recovery methods under the favorable LCA case, and contribution analysis for the design-basis LCA case.",
+    "calculation_basis": "Panel a uses run_lca_sensitivity_grid(). Panel b uses run_best_methods_grid(scenario_updates=FAVORABLE_LCA_SCENARIO_UPDATES) across {100, 1000, 10000} t/y and plots the lowest-net-LCOX capacity per curated method (no GWP-sign filter so struvite remains visible). Panel c stacks LCAResults contributions normalized by primary product mass.",
     "important_assumptions": [
       "Favorable climate cases assume renewable electricity, biogenic waste CO2, SCP carbon credit, and SCP displacement credit.",
-      "The contribution analysis shown in panel c uses the grid-power, biogenic-CO2 design basis.",
+      "Panel b labels each marker with the capacity that minimises net LCOX for that method (typically 10,000 t/y); LCOX numbers will differ from single-capacity figures (e.g. fig 9 at the user-selected capacity).",
+      "The contribution analysis shown in panel c uses the renewable-power, biogenic-CO2 design basis.",
       "Haber-Bosch lines are screening benchmarks for incumbent natural-gas and coal routes."
     ],
-    "interpretation_guidance": "Panel a shows how carbon accounting choices move the result, panel b isolates the commercially attractive negative-GWP cases, and panel c explains which burdens and credits create the net footprint."
+    "interpretation_guidance": "Panel a shows how carbon accounting choices move the result; panel b reveals the cost vs climate trade-off across all curated methods (e.g. struvite has the lowest LCOX but a positive GWP, while membrane and MAP routes go net-negative); panel c explains which burdens and credits create the net footprint."
   },
   "06_sensitivity_nh3": {
     "title": "NH3 Sensitivity Tornado",

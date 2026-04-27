@@ -18,6 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from .config import DATA_DIR, AmmoniaRecoveryMethod, ScenarioCategory, ScenarioConfig, UreaRecoveryMethod
 from .run_scenarios import (
+    FAVORABLE_LCA_SCENARIO_UPDATES,
     NH3_BEST_METHODS,
     RECOVERY_METHOD_LABELS,
     UREA_BEST_METHODS,
@@ -747,11 +748,15 @@ def plot_cost_vs_gwp(
     ax_wf.legend(fontsize=8, loc="upper right")
 
     # ================================================================
-    # Panel b — Cost vs GWP scatter for the attractive negative-GWP scenarios
+    # Panel b — Cost vs GWP scatter under favorable LCA (renewable + biogenic)
+    # All curated NH3 and urea recovery methods are shown regardless of GWP
+    # sign so the cost-vs-climate trade-off is visible (e.g. struvite has the
+    # lowest LCOX but a positive GWP; the membrane route has the lowest GWP).
     # ================================================================
-    attractive_rows = run_best_methods_negative_gwp_grid(
+    attractive_rows = run_best_methods_grid(
         capacities=[100.0, 1_000.0, 10_000.0],
         overrides=overrides,
+        scenario_updates=FAVORABLE_LCA_SCENARIO_UPDATES,
     )
 
     def _method_key(row: ScenarioEvaluation) -> str:
@@ -854,15 +859,23 @@ def plot_cost_vs_gwp(
                   framealpha=0.95, edgecolor="#CCCCCC")
 
     if best_rows:
-        gwp_min = min(row.lca.metrics["primary_product_gwp_kgco2e_per_kg"] for row in best_rows)
+        gwp_vals = [row.lca.metrics["primary_product_gwp_kgco2e_per_kg"] for row in best_rows]
+        gwp_min = min(gwp_vals)
+        gwp_max = max(gwp_vals + [HB_GWP_NG])
         # Extra right-side room (HB label + legend) and small left margin.
-        ax_sc.set_xlim(gwp_min - 0.8, HB_GWP_NG + 1.8)
+        ax_sc.set_xlim(gwp_min - 0.8, gwp_max + 1.8)
         # Vertical headroom so leader lines don't clip.
         y_min = min(row.tea.metrics["net_primary_lcox_usd_per_kg"] for row in best_rows)
         y_max = max(row.tea.metrics["net_primary_lcox_usd_per_kg"] for row in best_rows)
         y_span = max(0.4, y_max - y_min)
         ax_sc.set_ylim(y_min - 0.35 * y_span, max(y_max + 0.45 * y_span, 0.95))
     ax_sc.axvline(0.0, color="#777777", lw=0.7, ls=":")
+    # Subtle GWP=0 marker at the bottom of the axes.
+    ax_sc.text(
+        0.0, ax_sc.get_ylim()[0],
+        " GWP = 0",
+        fontsize=8.5, color="#777777", ha="left", va="bottom",
+    )
     ax_sc.set_xlabel("Net GWP (kg CO\u2082e / kg product) — favorable LCA case")
     ax_sc.set_ylabel("Net LCOX (USD / kg)")
     ax_sc.set_title("b)  Cost vs Climate Intensity", pad=12)
@@ -871,7 +884,7 @@ def plot_cost_vs_gwp(
     ax_sc.text(
         0.5,
         -0.18,
-        "Only the most attractive curated cases with net-negative GWP are shown.\n"
+        "All curated recovery methods shown (lowest-LCOX capacity per method, labelled in t/y).\n"
         "Assumptions: renewable electricity, biogenic CO$_2$, SCP C credit, protein displacement.",
         transform=ax_sc.transAxes,
         fontsize=10,
@@ -1225,7 +1238,7 @@ def plot_nh3_recovery_comparison(
     ax_lcox.set_yticks(y)
     ax_lcox.set_yticklabels(labels, fontsize=9.5)
     ax_lcox.set_xlabel("USD / kg NH\u2083 equivalent")
-    ax_lcox.set_title("a)  LCOX by Recovery Method", pad=12)
+    ax_lcox.set_title(f"a)  LCOX by Recovery Method  ({int(capacity_tpy):,} t/y)", pad=12)
     ax_lcox.invert_yaxis()
     ax_lcox.legend(fontsize=7.5, loc="lower right")
 
@@ -1358,7 +1371,7 @@ def plot_urea_recovery_comparison(
     ax_lcox.set_yticklabels(labels, fontsize=10)
     ax_lcox.invert_yaxis()
     ax_lcox.set_xlabel("USD / kg urea")
-    ax_lcox.set_title("a)  LCOX Comparison", pad=12)
+    ax_lcox.set_title(f"a)  LCOX Comparison  ({int(capacity_tpy):,} t/y)", pad=12)
     ax_lcox.legend(fontsize=7.5, loc="lower right")
 
     # ---- Center: Steam vs electricity trade-off ----
