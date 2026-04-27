@@ -46,7 +46,7 @@ from formate_biorefinery_model.run_scenarios import evaluate_scenario
 
 
 st.set_page_config(
-    page_title="Formate Biorefinery Explorer",
+    page_title="Xanthobacter C1 Biorefinery Explorer",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -67,10 +67,12 @@ def _check_password() -> bool:
     if st.session_state.get("authenticated"):
         return True
 
-    st.markdown("## Formate Biorefinery Explorer")
+    st.markdown("## Xanthobacter C1 Biorefinery Explorer")
     st.caption("This app is password protected.")
-    pw = st.text_input("Password", type="password", key="login_pw")
-    if st.button("Enter"):
+    with st.form("login_form"):
+        pw = st.text_input("Password", type="password", key="login_pw")
+        submitted = st.form_submit_button("Enter")
+    if submitted:
         if pw == required:
             st.session_state.authenticated = True
             st.rerun()
@@ -210,6 +212,35 @@ def _inject_css() -> None:
         [data-testid="stExpander"] summary {
             font-weight: 700;
             font-size: 0.94rem;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] details {
+            background: #17233a !important;
+            border: 1px solid rgba(219,228,255,0.22) !important;
+            border-radius: 14px !important;
+            overflow: hidden;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary {
+            background: #111827 !important;
+            color: #eef2ff !important;
+            border-bottom: 1px solid rgba(219,228,255,0.18) !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary *,
+        [data-testid="stSidebar"] [data-testid="stExpander"] details * {
+            color: #eef2ff !important;
+        }
+        [data-testid="stSidebar"] [data-baseweb="select"] > div,
+        [data-testid="stSidebar"] .stNumberInput [data-baseweb="input"],
+        [data-testid="stSidebar"] .stNumberInput input,
+        [data-testid="stSidebar"] .stTextInput input {
+            background-color: #111827 !important;
+            border-color: rgba(219,228,255,0.24) !important;
+            color: #eef2ff !important;
+            -webkit-text-fill-color: #eef2ff !important;
+        }
+        [data-testid="stSidebar"] .stNumberInput button {
+            background-color: #111827 !important;
+            border-color: rgba(219,228,255,0.24) !important;
+            color: #eef2ff !important;
         }
         </style>
         """,
