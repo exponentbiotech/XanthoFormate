@@ -34,7 +34,6 @@ from formate_biorefinery_model.reporting import (
     plot_annual_cashflow,
     plot_cost_structure,
     plot_cost_vs_gwp,
-    plot_executive_summary,
     plot_margin_curve,
     plot_market_viability_overview,
     plot_nh3_recovery_comparison,
@@ -257,13 +256,11 @@ _FIG_TITLES = {
     "05_cost_vs_gwp": "Cost vs. GWP (LCA deep-dive)",
     "06_sensitivity_nh3": "Sensitivity — NH3 route",
     "07_sensitivity_urea": "Sensitivity — Urea route",
-    "08_executive_summary": "Executive Summary",
     "09_nh3_recovery_compare": "NH3 Recovery Method Comparison",
     "10_urea_recovery_compare": "Urea Recovery Method Comparison",
 }
 
 _FIGURE_DISPLAY_ORDER = [
-    "08_executive_summary",
     "01_market_viability",
     "02_cost_structure",
     "03_scale_margin",
@@ -275,6 +272,7 @@ _FIGURE_DISPLAY_ORDER = [
     "07_sensitivity_urea",
     "00_process_flow",
 ]
+_EXCLUDED_FIGURES = {"08_executive_summary"}
 
 _COMMON_FORMULA_DEFINITIONS = [
     "M_p = annual sellable primary product mass (kg/y).",
@@ -419,23 +417,6 @@ _FIGURE_FORMULAS: Dict[str, List[Tuple[str, str, str]]] = {
             "Tornado bar width",
             r"\mathrm{Bar\ width} = \max(\mathrm{Net\ LCOX}_{\mathrm{low}},\mathrm{Net\ LCOX}_{\mathrm{high}}) - \min(\mathrm{Net\ LCOX}_{\mathrm{low}},\mathrm{Net\ LCOX}_{\mathrm{high}})",
             "Longer bars identify assumptions that move urea economics the most.",
-        ),
-    ],
-    "08_executive_summary": [
-        (
-            "Cost panel",
-            r"\mathrm{Net\ LCOX}(Q) = \frac{C_{\mathrm{var}}(Q) + C_{\mathrm{fixed}}(Q) - R_{\mathrm{credit}}(Q)}{M_p(Q)}",
-            "The cost panel applies the same net-LCOX equation across the modeled capacity range.",
-        ),
-        (
-            "Carbon panel",
-            r"\mathrm{GWP}_{p}(Q) = \frac{\sum_i G_i(Q)}{M_p(Q)}",
-            "The carbon panel applies the same GWP-intensity calculation across the modeled capacity range.",
-        ),
-        (
-            "Capital and NPV panels",
-            r"C_{\mathrm{capital}} = C_{\mathrm{fixed\ capital}} + C_{\mathrm{working\ capital}},\qquad \mathrm{NPV} = -C_{\mathrm{capital}} + \sum_{t=1}^{N}\frac{\mathrm{Cash\ flow}}{(1+r)^t}",
-            "The lower panels show total capital and the resulting discounted project value.",
         ),
     ],
     "09_nh3_recovery_compare": [
@@ -647,7 +628,6 @@ def build_figure(
         "05_cost_vs_gwp": lambda: plot_cost_vs_gwp(grid_rows, capacity_tpy=cap, overrides=overrides),
         "06_sensitivity_nh3": lambda: plot_sensitivity_tornado(nh3_cfg),
         "07_sensitivity_urea": lambda: plot_sensitivity_tornado(urea_cfg),
-        "08_executive_summary": lambda: plot_executive_summary(grid_rows),
         "09_nh3_recovery_compare": lambda: plot_nh3_recovery_comparison(capacity_tpy=cap, overrides=overrides),
         "10_urea_recovery_compare": lambda: plot_urea_recovery_comparison(capacity_tpy=cap, overrides=overrides),
     }
@@ -876,7 +856,10 @@ def main() -> None:
         "Detailed figures",
         "Choose one figure at a time. The displayed figure uses the exact same model state shown in the cards above.",
     )
-    available_figures = figure_ids()
+    available_figures = [
+        fig_id for fig_id in figure_ids()
+        if fig_id not in _EXCLUDED_FIGURES
+    ]
     ordered_figures = [
         fig_id for fig_id in _FIGURE_DISPLAY_ORDER
         if fig_id in available_figures
