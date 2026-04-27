@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -262,6 +262,209 @@ _FIG_TITLES = {
     "10_urea_recovery_compare": "Urea Recovery Method Comparison",
 }
 
+_COMMON_FORMULA_DEFINITIONS = [
+    "M_p = annual sellable primary product mass (kg/y).",
+    "C_var = total variable operating cost ($/y).",
+    "C_fixed = total fixed operating cost ($/y), including labor, overhead, maintenance, stack replacement, and annualized CapEx.",
+    "R_credit = total annual co-product and system credits ($/y), such as SCP, H2, CO2, struvite, or MAP fertilizer credits when enabled.",
+    "P_market = benchmark market price for the primary product ($/kg).",
+]
+
+_FIGURE_FORMULAS: Dict[str, List[Tuple[str, str, str]]] = {
+    "00_process_flow": [
+        (
+            "Purpose of the schematic",
+            r"\text{Process state} = f(\text{feedstock route},\ \text{primary pathway},\ \text{capacity},\ \text{recovery method})",
+            "This figure is not a numerical plot. It shows the sequence of unit operations used to build the mass, energy, cost, and GWP ledgers used by the quantitative figures below.",
+        ),
+        (
+            "Mass-balance logic",
+            r"\text{Annual flow}_{i} = M_p \times \text{route-specific stoichiometric factor}_{i}",
+            "The foreground model scales each material and utility flow from the selected annual primary-product capacity and the chosen NH3 or urea recovery route.",
+        ),
+    ],
+    "01_market_viability": [
+        (
+            "Gross levelized cost",
+            r"\mathrm{Gross\ LCOX} = \frac{C_{\mathrm{var}} + C_{\mathrm{fixed}}}{M_p}",
+            "This is the annual cost of making the primary product before co-product credits.",
+        ),
+        (
+            "Net levelized cost",
+            r"\mathrm{Net\ LCOX} = \frac{C_{\mathrm{var}} + C_{\mathrm{fixed}} - R_{\mathrm{credit}}}{M_p}",
+            "This subtracts enabled credits from the annual cost numerator, then divides by sellable primary-product mass.",
+        ),
+        (
+            "Market benchmark",
+            r"P_{\mathrm{market}} = \frac{R_{\mathrm{primary}}}{M_p}",
+            "The benchmark line is the assumed product revenue per kg. A case screens favorably when net LCOX is below this line.",
+        ),
+    ],
+    "02_cost_structure": [
+        (
+            "Positive cost bars",
+            r"\mathrm{Cost\ contribution}_{j} = \frac{C_j}{M_p}",
+            "Each annual cost component is divided by annual sellable primary-product mass to express it as $/kg product.",
+        ),
+        (
+            "Credit bars",
+            r"\mathrm{Credit\ contribution}_{k} = -\frac{R_{\mathrm{credit},k}}{M_p}",
+            "Credits are shown as negative bars because they reduce net LCOX.",
+        ),
+        (
+            "Net cost after all bars",
+            r"\mathrm{Net\ LCOX} = \sum_j \frac{C_j}{M_p} - \sum_k \frac{R_{\mathrm{credit},k}}{M_p}",
+            "The endpoint of the waterfall matches the net LCOX used elsewhere in the app.",
+        ),
+    ],
+    "03_scale_margin": [
+        (
+            "Net cost at each capacity",
+            r"\mathrm{Net\ LCOX}(Q) = \frac{C_{\mathrm{var}}(Q) + C_{\mathrm{fixed}}(Q) - R_{\mathrm{credit}}(Q)}{M_p(Q)}",
+            "The same TEA is re-run at each modeled capacity Q.",
+        ),
+        (
+            "Margin to market",
+            r"\mathrm{Margin}(Q) = P_{\mathrm{market}} - \mathrm{Net\ LCOX}(Q)",
+            "Positive margin means the modeled cost is below the benchmark product price.",
+        ),
+        (
+            "Capital scaling behind the curve",
+            r"\mathrm{CapEx}(Q) = \mathrm{CapEx}_{\mathrm{ref}}\left(\frac{Q}{Q_{\mathrm{ref}}}\right)^n",
+            "Capacity affects the denominator and also changes scaled capital, labor, and fixed-cost burden.",
+        ),
+    ],
+    "04_cashflow_npv": [
+        (
+            "Annual cash flow",
+            r"\mathrm{Cash\ flow} = R_{\mathrm{primary}} + R_{\mathrm{credit}} - C_{\mathrm{var}} - \left(C_{\mathrm{fixed}} - C_{\mathrm{annualized\ capex}}\right)",
+            "CapEx is treated as an upfront investment in the NPV calculation, so annualized CapEx is removed from annual fixed cost when computing cash flow.",
+        ),
+        (
+            "Capital recovery factor",
+            r"\mathrm{CRF} = \frac{r(1+r)^N}{(1+r)^N - 1}",
+            "The annualized CapEx used in LCOX equals total capital multiplied by CRF, where r is discount rate and N is plant life.",
+        ),
+        (
+            "Net present value",
+            r"\mathrm{NPV} = -C_{\mathrm{capital}} + \sum_{t=1}^{N}\frac{\mathrm{Cash\ flow}}{(1+r)^t}",
+            "The NPV panel discounts the same annual cash flow over the configured plant life.",
+        ),
+    ],
+    "05_cost_vs_gwp": [
+        (
+            "Annual GWP contribution",
+            r"G_i = A_i \times EF_i",
+            "Each activity A_i, such as kWh of electricity or kg of reagent, is multiplied by its emission factor EF_i.",
+        ),
+        (
+            "Biogenic carbon credit",
+            r"G_{\mathrm{bioC}} = -M_{\mathrm{SCP}}\times f_C \times \frac{44}{12}",
+            "When enabled for biogenic CO2, the carbon stored in SCP is converted from kg C to kg CO2e and applied as a credit.",
+        ),
+        (
+            "Net GWP intensity",
+            r"\mathrm{GWP}_{p} = \frac{\sum_i G_i}{M_p}",
+            "The plotted carbon intensity is the sum of annual burdens and credits divided by annual sellable primary-product mass.",
+        ),
+        (
+            "Cost-climate screen",
+            r"\left(\mathrm{Net\ LCOX},\ \mathrm{GWP}_{p}\right)",
+            "The scatter plot pairs the economic result with the carbon-intensity result for each screened case.",
+        ),
+    ],
+    "06_sensitivity_nh3": [
+        (
+            "One-at-a-time low case",
+            r"x_{\mathrm{low}} = x_0(1-\Delta)",
+            "For each NH3 parameter, only that parameter is lowered while all other assumptions stay at the base value.",
+        ),
+        (
+            "One-at-a-time high case",
+            r"x_{\mathrm{high}} = x_0(1+\Delta)",
+            "The same parameter is then raised by the same fractional delta, typically 20%.",
+        ),
+        (
+            "Tornado bar width",
+            r"\mathrm{Bar\ width} = \max(\mathrm{Net\ LCOX}_{\mathrm{low}},\mathrm{Net\ LCOX}_{\mathrm{high}}) - \min(\mathrm{Net\ LCOX}_{\mathrm{low}},\mathrm{Net\ LCOX}_{\mathrm{high}})",
+            "Longer bars identify assumptions that move NH3 economics the most.",
+        ),
+    ],
+    "07_sensitivity_urea": [
+        (
+            "One-at-a-time low case",
+            r"x_{\mathrm{low}} = x_0(1-\Delta)",
+            "For each urea parameter, only that parameter is lowered while all other assumptions stay at the base value.",
+        ),
+        (
+            "One-at-a-time high case",
+            r"x_{\mathrm{high}} = x_0(1+\Delta)",
+            "The same parameter is then raised by the same fractional delta, typically 20%.",
+        ),
+        (
+            "Tornado bar width",
+            r"\mathrm{Bar\ width} = \max(\mathrm{Net\ LCOX}_{\mathrm{low}},\mathrm{Net\ LCOX}_{\mathrm{high}}) - \min(\mathrm{Net\ LCOX}_{\mathrm{low}},\mathrm{Net\ LCOX}_{\mathrm{high}})",
+            "Longer bars identify assumptions that move urea economics the most.",
+        ),
+    ],
+    "08_executive_summary": [
+        (
+            "Cost panel",
+            r"\mathrm{Net\ LCOX}(Q) = \frac{C_{\mathrm{var}}(Q) + C_{\mathrm{fixed}}(Q) - R_{\mathrm{credit}}(Q)}{M_p(Q)}",
+            "The cost panel applies the same net-LCOX equation across the modeled capacity range.",
+        ),
+        (
+            "Carbon panel",
+            r"\mathrm{GWP}_{p}(Q) = \frac{\sum_i G_i(Q)}{M_p(Q)}",
+            "The carbon panel applies the same GWP-intensity calculation across the modeled capacity range.",
+        ),
+        (
+            "Capital and NPV panels",
+            r"C_{\mathrm{capital}} = C_{\mathrm{fixed\ capital}} + C_{\mathrm{working\ capital}},\qquad \mathrm{NPV} = -C_{\mathrm{capital}} + \sum_{t=1}^{N}\frac{\mathrm{Cash\ flow}}{(1+r)^t}",
+            "The lower panels show total capital and the resulting discounted project value.",
+        ),
+    ],
+    "09_nh3_recovery_compare": [
+        (
+            "Gross and net recovery-route LCOX",
+            r"\mathrm{Gross\ LCOX}_{m} = \frac{C_{\mathrm{var},m}+C_{\mathrm{fixed},m}}{M_p},\qquad \mathrm{Net\ LCOX}_{m} = \frac{C_{\mathrm{var},m}+C_{\mathrm{fixed},m}-R_{\mathrm{credit},m}}{M_p}",
+            "Each NH3 recovery method m is evaluated at the same product capacity for an apples-to-apples comparison.",
+        ),
+        (
+            "Recovery cost drivers",
+            r"\mathrm{Driver}_{j,m} = \frac{C_{j,m}}{M_p}",
+            "Electricity, NaOH, MgCl2, H3PO4, membrane replacement, and annualized CapEx are normalized to $/kg NH3-equivalent product.",
+        ),
+        (
+            "Fertilizer-route crediting",
+            r"R_{\mathrm{credit},m} = R_{\mathrm{SCP}} + R_{\mathrm{H2}} + R_{\mathrm{CO2}} + R_{\mathrm{struvite/MAP}}",
+            "Struvite and MAP fertilizer revenues are treated as credits while the denominator remains NH3-equivalent mass.",
+        ),
+    ],
+    "10_urea_recovery_compare": [
+        (
+            "Gross and net recovery-route LCOX",
+            r"\mathrm{Gross\ LCOX}_{m} = \frac{C_{\mathrm{var},m}+C_{\mathrm{fixed},m}}{M_p},\qquad \mathrm{Net\ LCOX}_{m} = \frac{C_{\mathrm{var},m}+C_{\mathrm{fixed},m}-R_{\mathrm{credit},m}}{M_p}",
+            "Each urea recovery method m is evaluated at the same product capacity.",
+        ),
+        (
+            "Steam cost",
+            r"\mathrm{Steam\ OPEX}_{m} = \frac{M_{\mathrm{steam},m}\times P_{\mathrm{steam}}}{M_p}",
+            "The center panel isolates steam burden per kg urea.",
+        ),
+        (
+            "Recovery electricity cost",
+            r"\mathrm{Recovery\ electricity\ OPEX}_{m} = \frac{\left(E_{\mathrm{total},m}-E_{\mathrm{electrolysis},m}-E_{\mathrm{fermentation},m}-E_{\mathrm{SCP},m}\right)\times P_{\mathrm{electricity}}}{M_p}",
+            "The center panel also isolates the incremental electricity associated with urea recovery.",
+        ),
+        (
+            "GWP by recovery route",
+            r"\mathrm{GWP}_{p,m} = \frac{\sum_i G_{i,m}}{M_p}",
+            "The right panel compares net GWP intensity for each urea recovery method.",
+        ),
+    ],
+}
+
 _NH3_LABELS = {m.value: m.value.replace("_", " ").title() for m in AmmoniaRecoveryMethod}
 _NH3_LABELS[AmmoniaRecoveryMethod.STRUVITE_MAP.value] = "Struvite"
 _UREA_LABELS = {m.value: m.value.replace("_", " ").title() for m in UreaRecoveryMethod}
@@ -334,11 +537,23 @@ def _section_header(kicker: str, title: str, subtitle: str) -> None:
     st.markdown(f"<div class='section-subtitle'>{subtitle}</div>", unsafe_allow_html=True)
 
 
+def _md_escape(text: str) -> str:
+    return str(text).replace("$", r"\$")
+
+
 def _render_figure_methodology(fig_id: str) -> None:
     meta = figure_metadata(fig_id)
-    with st.expander("Methodology & calculation notes", expanded=False):
+    formulas = _FIGURE_FORMULAS.get(fig_id, [])
+    with st.expander("How was this figure calculated?", expanded=False):
         st.markdown(f"**What is plotted** — {meta.get('what_is_plotted', '')}")
-        st.markdown(f"**How it was calculated** — {meta.get('calculation_basis', '')}")
+        if fig_id != "00_process_flow":
+            st.markdown("**Common terms used below:**")
+            for item in _COMMON_FORMULA_DEFINITIONS:
+                st.markdown(f"- {_md_escape(item)}")
+        for heading, formula, explanation in formulas:
+            st.markdown(f"**{heading}**")
+            st.latex(formula)
+            st.markdown(_md_escape(explanation))
         assumptions = meta.get("important_assumptions", [])
         if assumptions:
             st.markdown("**Important assumptions:**")
@@ -621,6 +836,7 @@ def main() -> None:
     for fig_id in figure_ids():
         title = _FIG_TITLES.get(fig_id, fig_id)
         with st.expander(title, expanded=False):
+            _render_figure_methodology(fig_id)
             with st.spinner(f"Rendering {title}..."):
                 try:
                     fig = build_figure(
@@ -635,7 +851,6 @@ def main() -> None:
                     fig.clf()
                 except Exception as exc:
                     st.error(f"Could not render figure: {exc}")
-            _render_figure_methodology(fig_id)
 
     _section_header(
         "Reference Trace",
