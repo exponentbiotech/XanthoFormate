@@ -285,6 +285,131 @@ def _inject_css() -> None:
                 font-size: 0.9rem !important;
             }
         }
+        /* ── Force-light styling for the assistant chat dialog ─────────────
+           Streamlit auto-themes some dialog content from the browser's
+           prefers-color-scheme. Even with [theme] base="light" pinned in
+           config.toml, we explicitly enforce black-on-white inside the
+           modal so the chat is always readable regardless of the viewer's
+           OS / browser dark-mode setting. */
+        [data-testid="stDialog"],
+        [data-testid="stModal"],
+        div[role="dialog"] {
+            color-scheme: light !important;
+        }
+        [data-testid="stDialog"] [data-testid="stDialogContent"],
+        [data-testid="stDialog"] > div > div,
+        div[role="dialog"] > div {
+            background: #FFFFFF !important;
+            color: #101828 !important;
+        }
+        [data-testid="stDialog"] *,
+        div[role="dialog"] * {
+            color: #101828 !important;
+            border-color: #d7dde7 !important;
+        }
+        /* Chat-message bubbles inside the dialog */
+        [data-testid="stDialog"] [data-testid="stChatMessage"],
+        div[role="dialog"] [data-testid="stChatMessage"] {
+            background: #F4F7FB !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 12px !important;
+            padding: 0.8rem 1rem !important;
+            color: #101828 !important;
+        }
+        [data-testid="stDialog"] [data-testid="stChatMessage"] *,
+        div[role="dialog"] [data-testid="stChatMessage"] * {
+            color: #101828 !important;
+            background: transparent !important;
+        }
+        /* Inline code / pre blocks inside chat messages */
+        [data-testid="stDialog"] [data-testid="stChatMessage"] code,
+        [data-testid="stDialog"] [data-testid="stChatMessage"] pre,
+        div[role="dialog"] [data-testid="stChatMessage"] code,
+        div[role="dialog"] [data-testid="stChatMessage"] pre {
+            background: #EEF2F7 !important;
+            color: #0B2447 !important;
+            border: 1px solid #DAE1EC !important;
+            border-radius: 6px !important;
+            padding: 1px 5px !important;
+        }
+        /* Avatar / icon backdrop */
+        [data-testid="stDialog"] [data-testid="stChatMessageAvatarUser"],
+        [data-testid="stDialog"] [data-testid="stChatMessageAvatarAssistant"],
+        div[role="dialog"] [data-testid="stChatMessageAvatarUser"],
+        div[role="dialog"] [data-testid="stChatMessageAvatarAssistant"] {
+            background: #0B63CE !important;
+            color: #FFFFFF !important;
+        }
+        [data-testid="stDialog"] [data-testid="stChatMessageAvatarUser"] *,
+        [data-testid="stDialog"] [data-testid="stChatMessageAvatarAssistant"] *,
+        div[role="dialog"] [data-testid="stChatMessageAvatarUser"] *,
+        div[role="dialog"] [data-testid="stChatMessageAvatarAssistant"] * {
+            color: #FFFFFF !important;
+        }
+        /* Scrollable history container */
+        [data-testid="stDialog"] [data-testid="stVerticalBlockBorderWrapper"],
+        div[role="dialog"] [data-testid="stVerticalBlockBorderWrapper"] {
+            background: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+        }
+        /* Chat input */
+        [data-testid="stDialog"] [data-testid="stChatInput"],
+        div[role="dialog"] [data-testid="stChatInput"] {
+            background: #FFFFFF !important;
+            border: 1px solid #CBD5E1 !important;
+            border-radius: 10px !important;
+        }
+        [data-testid="stDialog"] [data-testid="stChatInput"] textarea,
+        [data-testid="stDialog"] [data-testid="stChatInput"] input,
+        div[role="dialog"] [data-testid="stChatInput"] textarea,
+        div[role="dialog"] [data-testid="stChatInput"] input {
+            background: #FFFFFF !important;
+            color: #101828 !important;
+            -webkit-text-fill-color: #101828 !important;
+            caret-color: #101828 !important;
+        }
+        [data-testid="stDialog"] [data-testid="stChatInput"] textarea::placeholder,
+        [data-testid="stDialog"] [data-testid="stChatInput"] input::placeholder,
+        div[role="dialog"] [data-testid="stChatInput"] textarea::placeholder,
+        div[role="dialog"] [data-testid="stChatInput"] input::placeholder {
+            color: #6B7280 !important;
+            -webkit-text-fill-color: #6B7280 !important;
+        }
+        /* Buttons inside the dialog (Clear / Close) */
+        [data-testid="stDialog"] .stButton button,
+        div[role="dialog"] .stButton button {
+            background: #FFFFFF !important;
+            color: #101828 !important;
+            border: 1px solid #CBD5E1 !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stDialog"] .stButton button[kind="primary"],
+        div[role="dialog"] .stButton button[kind="primary"] {
+            background: #0B63CE !important;
+            color: #FFFFFF !important;
+            border-color: #0B63CE !important;
+        }
+        [data-testid="stDialog"] .stButton button[kind="primary"] *,
+        div[role="dialog"] .stButton button[kind="primary"] * {
+            color: #FFFFFF !important;
+        }
+        [data-testid="stDialog"] .stButton button:hover,
+        div[role="dialog"] .stButton button:hover {
+            background: #F4F7FB !important;
+        }
+        [data-testid="stDialog"] .stButton button[kind="primary"]:hover,
+        div[role="dialog"] .stButton button[kind="primary"]:hover {
+            background: #094FA6 !important;
+        }
+        /* Captions inside dialog */
+        [data-testid="stDialog"] [data-testid="stCaptionContainer"],
+        div[role="dialog"] [data-testid="stCaptionContainer"] {
+            color: #4B5563 !important;
+        }
+        [data-testid="stDialog"] [data-testid="stCaptionContainer"] *,
+        div[role="dialog"] [data-testid="stCaptionContainer"] * {
+            color: #4B5563 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,

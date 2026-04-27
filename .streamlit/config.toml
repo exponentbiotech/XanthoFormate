@@ -1,0 +1,10 @@
+[theme]
+# Lock the app to a fixed light theme so it does not switch based on
+# the user's browser/OS dark-mode preference. This keeps figures,
+# tables, and the assistant chat readable for every viewer.
+base = "light"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F7FB"
+textColor = "#101828"
+primaryColor = "#0B63CE"
+font = "sans serif"
