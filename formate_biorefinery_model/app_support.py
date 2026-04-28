@@ -784,6 +784,94 @@ def _strip_constant_fields(rows: List[Dict[str, object]]) -> List[Dict[str, obje
     return [{k: v for k, v in row.items() if k not in constant_keys} for row in rows]
 
 
+def _best_row(
+    rows: Sequence[Dict[str, object]],
+    metric: str,
+    *,
+    maximize: bool = False,
+) -> Dict[str, object]:
+    """Return the best row for a metric using deterministic Python ranking."""
+    best = max(rows, key=lambda row: float(row[metric])) if maximize else min(rows, key=lambda row: float(row[metric]))
+    return dict(best)
+
+
+def _winner_ref(row: Dict[str, object]) -> Dict[str, object]:
+    """Short reference to a winning row, optimized for LLM token budget."""
+    category = str(row.get("category", ""))
+    method = (
+        f"nh3={row.get('nh3_recovery_method')}"
+        if category == ScenarioCategory.AMMONIA_SCP.value
+        else f"urea={row.get('urea_recovery_method')}"
+    )
+    return {
+        "id": (
+            f"{category}|{row.get('feedstock')}|{row.get('capacity_tpy')} t/y|"
+            f"{row.get('electricity_case')}|{method}"
+        ),
+        "net_lcox_usd_per_kg": row.get("net_lcox_usd_per_kg"),
+        "npv_usd_million": row.get("npv_usd_million"),
+        "gwp_kgco2e_per_kg": row.get("primary_product_gwp_kgco2e_per_kg"),
+    }
+
+
+def _winner(
+    rows: Sequence[Dict[str, object]],
+    metric: str,
+    *,
+    maximize: bool = False,
+) -> Dict[str, object]:
+    return _winner_ref(_best_row(rows, metric, maximize=maximize))
+
+
+def _ranking_summary(
+    nh3_methods: Sequence[Dict[str, object]],
+    urea_methods: Sequence[Dict[str, object]],
+    feedstock_variants: Sequence[Dict[str, object]],
+    electricity_variants: Sequence[Dict[str, object]],
+    capacity_curve: Sequence[Dict[str, object]],
+    credit_sensitivity: Sequence[Dict[str, object]],
+) -> Dict[str, object]:
+    """Precompute common "which is best?" answers so the LLM does not rank rows itself."""
+    all_current_capacity_modes = list(nh3_methods) + list(urea_methods)
+    return {
+        "current_capacity_all_production_modes": {
+            "highest_npv": _winner(all_current_capacity_modes, "npv_usd_million", maximize=True),
+            "lowest_net_lcox": _winner(all_current_capacity_modes, "net_lcox_usd_per_kg"),
+            "lowest_gwp": _winner(all_current_capacity_modes, "primary_product_gwp_kgco2e_per_kg"),
+        },
+        "feedstock": {
+            "highest_npv": _winner(feedstock_variants, "npv_usd_million", maximize=True),
+            "lowest_net_lcox": _winner(feedstock_variants, "net_lcox_usd_per_kg"),
+            "lowest_gwp": _winner(feedstock_variants, "primary_product_gwp_kgco2e_per_kg"),
+        },
+        "nh3_recovery_method": {
+            "highest_npv": _winner(nh3_methods, "npv_usd_million", maximize=True),
+            "lowest_net_lcox": _winner(nh3_methods, "net_lcox_usd_per_kg"),
+            "lowest_gwp": _winner(nh3_methods, "primary_product_gwp_kgco2e_per_kg"),
+        },
+        "urea_recovery_method": {
+            "highest_npv": _winner(urea_methods, "npv_usd_million", maximize=True),
+            "lowest_net_lcox": _winner(urea_methods, "net_lcox_usd_per_kg"),
+            "lowest_gwp": _winner(urea_methods, "primary_product_gwp_kgco2e_per_kg"),
+        },
+        "capacity": {
+            "highest_npv": _winner(capacity_curve, "npv_usd_million", maximize=True),
+            "lowest_net_lcox": _winner(capacity_curve, "net_lcox_usd_per_kg"),
+            "lowest_gwp": _winner(capacity_curve, "primary_product_gwp_kgco2e_per_kg"),
+        },
+        "electricity_case": {
+            "highest_npv": _winner(electricity_variants, "npv_usd_million", maximize=True),
+            "lowest_net_lcox": _winner(electricity_variants, "net_lcox_usd_per_kg"),
+            "lowest_gwp": _winner(electricity_variants, "primary_product_gwp_kgco2e_per_kg"),
+        },
+        "lca_accounting_case": {
+            "highest_npv": _winner(credit_sensitivity, "npv_usd_million", maximize=True),
+            "lowest_net_lcox": _winner(credit_sensitivity, "net_lcox_usd_per_kg"),
+            "lowest_gwp": _winner(credit_sensitivity, "primary_product_gwp_kgco2e_per_kg"),
+        },
+    }
+
+
 def comprehensive_chat_context(
     base_config: ScenarioConfig,
     overrides: Mapping[str, float],
@@ -884,7 +972,16 @@ def comprehensive_chat_context(
         "notes": (
             "All 'lcox_usd_per_kg' values are USD per kg of PRIMARY product. "
             "Negative net_lcox means SCP / co-product credits exceed variable cost. "
+            "computed_rankings contains deterministic Python-ranked winners; use it first for 'which is best' questions. "
             "Each comparison list varies one axis; constant fields are omitted to save tokens."
+        ),
+        "computed_rankings": _ranking_summary(
+            nh3_methods=nh3_methods,
+            urea_methods=urea_methods,
+            feedstock_variants=feedstock_variants,
+            electricity_variants=electricity_variants,
+            capacity_curve=capacity_curve,
+            credit_sensitivity=credit_sensitivity,
         ),
         "active_scenario": active_evaluation.to_dict(),
         "nh3_recovery_method_comparison": _strip_constant_fields(nh3_methods),

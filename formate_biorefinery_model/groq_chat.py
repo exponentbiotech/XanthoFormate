@@ -9,11 +9,11 @@ except ModuleNotFoundError:  # pragma: no cover
     Groq = None
 
 
-DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant"
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # Maximum number of previous chat turns to include (each turn = 1 user + 1 assistant msg).
-# Kept low because the comprehensive snapshot already consumes ~3-4k tokens per
-# request; the Groq free tier caps llama-3.1-8b-instant at 6,000 tokens/minute.
+# Kept low because the comprehensive snapshot already consumes a few thousand
+# tokens per request; free-tier Groq models have tight per-minute budgets.
 _MAX_HISTORY_TURNS = 2
 
 # Cap on assistant reply length. Counts toward Groq's TPM budget even if the
@@ -27,6 +27,7 @@ def groq_available() -> bool:
 
 _COMPREHENSIVE_KEYS = (
     "notes",
+    "computed_rankings",
     "active_scenario",
     "nh3_recovery_method_comparison",
     "urea_recovery_method_comparison",
@@ -69,15 +70,16 @@ def system_prompt() -> str:
         "\n\n"
         "GROUNDING — The user-message attachment titled 'Current app state (JSON)' contains "
         "either a single active scenario or, when available, a comprehensive comparison "
-        "covering ALL production modes — every NH3 recovery method, every urea recovery "
+        "covering ALL production modes plus a computed_rankings object with deterministic "
+        "Python-ranked winners. The comparisons cover every NH3 recovery method, every urea recovery "
         "method, every feedstock pathway (formate, H2/CO2, methanol), every electricity "
         "case (US grid vs renewable), capacity scaling (100 / 1 000 / 10 000 t/y), and "
         "LCA credit sensitivity. "
         "\n"
         "When the user asks open-ended questions like 'which is most profitable?', 'which "
         "feedstock should we use?', or 'which recovery method has the lowest GWP?', you MUST "
-        "consult the cross-scenario comparison arrays — do NOT restrict your answer to the "
-        "active_scenario only. Compare net_lcox_usd_per_kg, npv_usd_million, and "
+        "consult computed_rankings first, then use the cross-scenario arrays for supporting "
+        "detail. Do NOT restrict your answer to the active_scenario only. Compare net_lcox_usd_per_kg, npv_usd_million, and "
         "primary_product_gwp_kgco2e_per_kg across the relevant comparison list, name the "
         "winning configuration explicitly (category, feedstock, recovery method, capacity, "
         "electricity case), and quote the supporting numbers."
