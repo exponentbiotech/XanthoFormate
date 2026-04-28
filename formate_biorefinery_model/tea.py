@@ -153,7 +153,13 @@ def evaluate_tea(result: ForegroundResults, economic: EconomicInputs) -> TEAResu
     total_annual_cost = variable_total + fixed_total
     gross_lcox = total_annual_cost / max(1e-9, result.sellable_primary_product_kg)
     net_lcox = (total_annual_cost - credits_total) / max(1e-9, result.sellable_primary_product_kg)
-    benchmark_total_revenue = product_revenue + credits_total
+    # For Struvite/MAP routes the fertilizer revenue is intentionally included
+    # in ``credits`` for LCOX accounting, because LCOX is reported per kg NH3
+    # equivalent: (costs - fertilizer value - SCP credit) / kg_NH3_eq.
+    # Do not also count that same fertilizer value as a credit in cash-flow NPV,
+    # since ``product_revenue`` already represents the fertilizer sale.
+    cashflow_credits_total = credits_total - credits["struvite_credit"] - credits["map_fert_credit"]
+    benchmark_total_revenue = product_revenue + cashflow_credits_total
     annual_cash_flow = benchmark_total_revenue - variable_total - (fixed_total - annualized_capex)
     npv = -total_capital
     full_years = int(math.floor(economic.plant_life_years))
