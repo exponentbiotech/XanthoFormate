@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .config import (
@@ -730,4 +730,154 @@ def app_context_snapshot(
             if figure_id in metadata
         },
         "source_rows": source_rows_for_display(source_rows),
+    }
+
+
+def _compact_eval(eval_result: ScenarioEvaluation) -> Dict[str, object]:
+    """Compact JSON-friendly summary of a scenario evaluation for LLM context."""
+    cfg = eval_result.foreground.scenario
+    m = eval_result.tea.metrics
+    l = eval_result.lca.metrics
+    return {
+        "category": cfg.category.value,
+        "feedstock": cfg.feedstock_type.value,
+        "capacity_tpy": float(cfg.annual_primary_product_tpy),
+        "electricity_case": cfg.electricity_case.value,
+        "co2_source": cfg.co2_source.value,
+        "nh3_recovery_method": cfg.ammonia_recovery_method.value,
+        "urea_recovery_method": cfg.urea_recovery_method.value,
+        "use_scp_credit": bool(cfg.use_scp_credit),
+        "use_biogenic_carbon_credit": bool(cfg.use_biogenic_carbon_credit),
+        "use_scp_displacement_credit": bool(cfg.use_scp_displacement_credit),
+        "gross_lcox_usd_per_kg": round(float(m["gross_primary_lcox_usd_per_kg"]), 3),
+        "net_lcox_usd_per_kg": round(float(m["net_primary_lcox_usd_per_kg"]), 3),
+        "npv_usd_million": round(float(m["npv_usd"]) / 1e6, 2),
+        "primary_product_gwp_kgco2e_per_kg": round(float(l["primary_product_gwp_kgco2e_per_kg"]), 3),
+        "annual_primary_kg": round(float(eval_result.foreground.sellable_primary_product_kg), 0),
+        "annual_scp_kg": round(float(eval_result.foreground.annual_scp_kg), 0),
+    }
+
+
+def comprehensive_chat_context(
+    base_config: ScenarioConfig,
+    overrides: Mapping[str, float],
+    active_evaluation: ScenarioEvaluation,
+    source_rows: Sequence[Mapping[str, object]],
+    active_figure_ids: Sequence[str] = (),
+) -> Dict[str, object]:
+    """Build a snapshot covering the active scenario PLUS broad cross-scenario coverage.
+
+    The LLM uses this to answer questions that are not specific to the
+    currently-selected sidebar settings (e.g. "which feedstock is most
+    profitable?", "which recovery method has the lowest GWP?", "how does
+    LCOX scale with plant capacity?").
+
+    Returned structure (all numbers in compact summary form):
+      - active_scenario   — full detail of the currently-selected scenario
+      - nh3_recovery_method_comparison   — every NH3 recovery method at active capacity
+      - urea_recovery_method_comparison  — every Urea recovery method at active capacity
+      - feedstock_comparison             — all feedstock pathways at active scenario
+      - electricity_case_comparison      — US grid vs renewable for active scenario
+      - capacity_scaling                 — 100 / 1k / 10k t/y for active method
+      - lca_credit_sensitivity           — toggle each LCA credit on/off
+      - active_figures                   — metadata for figures the user is viewing
+    """
+    base_overrides = normalize_overrides(overrides)
+    cap = float(base_config.annual_primary_product_tpy)
+
+    def _run(updates: Dict[str, object]) -> Dict[str, object]:
+        cfg_kwargs = {
+            "category": base_config.category,
+            "annual_primary_product_tpy": base_config.annual_primary_product_tpy,
+            "feedstock_type": base_config.feedstock_type,
+            "electricity_case": base_config.electricity_case,
+            "ammonia_recovery_method": base_config.ammonia_recovery_method,
+            "urea_recovery_method": base_config.urea_recovery_method,
+            "use_scp_credit": base_config.use_scp_credit,
+            "co2_source": base_config.co2_source,
+            "use_biogenic_carbon_credit": base_config.use_biogenic_carbon_credit,
+            "use_scp_displacement_credit": base_config.use_scp_displacement_credit,
+        }
+        cfg_kwargs.update(updates)
+        cfg = ScenarioConfig(**cfg_kwargs)
+        return _compact_eval(evaluate_scenario(cfg, overrides=base_overrides))
+
+    nh3_methods = [
+        _run({
+            "category": ScenarioCategory.AMMONIA_SCP,
+            "annual_primary_product_tpy": cap,
+            "ammonia_recovery_method": method,
+        })
+        for method in AmmoniaRecoveryMethod
+    ]
+    urea_methods = [
+        _run({
+            "category": ScenarioCategory.BIO_UREA_SCP,
+            "annual_primary_product_tpy": cap,
+            "urea_recovery_method": method,
+        })
+        for method in UreaRecoveryMethod
+    ]
+    feedstock_variants = [
+        _run({"feedstock_type": feedstock, "annual_primary_product_tpy": cap})
+        for feedstock in FeedstockType
+    ]
+    electricity_variants = [
+        _run({"electricity_case": elec, "annual_primary_product_tpy": cap})
+        for elec in ElectricityCase
+    ]
+    capacity_curve = [
+        _run({"annual_primary_product_tpy": cap_val})
+        for cap_val in (100.0, 1_000.0, 10_000.0)
+    ]
+    credit_sensitivity = [
+        _run({
+            "annual_primary_product_tpy": cap,
+            "use_biogenic_carbon_credit": False,
+            "use_scp_displacement_credit": False,
+            "co2_source": CO2Source.FOSSIL_CAPTURE,
+            "electricity_case": ElectricityCase.US_GRID,
+        }),
+        _run({
+            "annual_primary_product_tpy": cap,
+            "use_biogenic_carbon_credit": True,
+            "use_scp_displacement_credit": False,
+            "co2_source": CO2Source.BIOGENIC_WASTE,
+            "electricity_case": ElectricityCase.US_GRID,
+        }),
+        _run({
+            "annual_primary_product_tpy": cap,
+            "use_biogenic_carbon_credit": True,
+            "use_scp_displacement_credit": True,
+            "co2_source": CO2Source.BIOGENIC_WASTE,
+            "electricity_case": ElectricityCase.RENEWABLE,
+        }),
+    ]
+
+    metadata = load_figure_metadata()
+    return {
+        "explanatory_notes": [
+            "All 'lcox_usd_per_kg' numbers are in USD per kilogram of PRIMARY product.",
+            "Negative net LCOX means the SCP / co-product credits exceed the variable cost basis.",
+            "GWP (kg CO2e/kg) is allocated to the primary product after biogenic / displacement credits when those are enabled in the scenario.",
+            "Each comparison fixes everything except the listed axis at the user's current sidebar settings.",
+        ],
+        "active_scenario": {
+            "config": current_config_summary(active_evaluation.foreground.scenario),
+            "kpis": active_evaluation.to_dict(),
+            "tea_metrics": active_evaluation.tea.metrics,
+            "lca_metrics": active_evaluation.lca.metrics,
+        },
+        "nh3_recovery_method_comparison": nh3_methods,
+        "urea_recovery_method_comparison": urea_methods,
+        "feedstock_comparison": feedstock_variants,
+        "electricity_case_comparison": electricity_variants,
+        "capacity_scaling": capacity_curve,
+        "lca_credit_sensitivity": credit_sensitivity,
+        "active_figures": {
+            figure_id: metadata[figure_id]
+            for figure_id in active_figure_ids
+            if figure_id in metadata
+        },
+        "source_rows_count": len(source_rows),
     }

@@ -19,12 +19,29 @@ def groq_available() -> bool:
     return Groq is not None
 
 
+_COMPREHENSIVE_KEYS = (
+    "explanatory_notes",
+    "active_scenario",
+    "nh3_recovery_method_comparison",
+    "urea_recovery_method_comparison",
+    "feedstock_comparison",
+    "electricity_case_comparison",
+    "capacity_scaling",
+    "lca_credit_sensitivity",
+)
+
+
 def _trim_snapshot(snapshot: Mapping[str, object]) -> dict:
     """Return a compact subset of the app snapshot safe for the LLM context budget.
 
-    Drops the large source_rows table and verbose figure metadata, keeping only
-    the structured numbers the model needs to answer scenario questions.
+    Supports two snapshot shapes:
+      * The legacy single-scenario shape (scenario, kpis, tea_metrics, lca_metrics).
+      * The comprehensive shape (active_scenario + cross-scenario comparisons),
+        which lets the LLM reason about production modes that are not currently
+        selected (e.g. alternate recovery methods, feedstocks, electricity cases).
     """
+    if "active_scenario" in snapshot:
+        return {key: snapshot[key] for key in _COMPREHENSIVE_KEYS if key in snapshot}
     return {
         "scenario": snapshot.get("scenario"),
         "kpis": snapshot.get("kpis"),
@@ -43,11 +60,29 @@ def system_prompt() -> str:
         "You are an expert assistant embedded inside a techno-economic analysis (TEA) and "
         "life-cycle-assessment (LCA) Streamlit app for a formate biorefinery producing ammonia "
         "and/or urea plus single-cell protein (SCP) using engineered Xanthomonas flavus GJ10. "
-        "When the user asks about the current app state, ground your answer in the provided "
-        "scenario JSON (scenario, kpis, tea_metrics, lca_metrics). "
-        "When the user asks about hypothetical or alternative scenarios, answer using the model "
-        "structure and current parameter assumptions, but clearly flag what is computed vs. "
-        "reasoned. Be concise and quantitative. Do not invent references or numbers."
+        "\n\n"
+        "GROUNDING — The user-message attachment titled 'Current app state (JSON)' contains "
+        "either a single active scenario or, when available, a comprehensive comparison "
+        "covering ALL production modes — every NH3 recovery method, every urea recovery "
+        "method, every feedstock pathway (formate, H2/CO2, methanol), every electricity "
+        "case (US grid vs renewable), capacity scaling (100 / 1 000 / 10 000 t/y), and "
+        "LCA credit sensitivity. "
+        "\n"
+        "When the user asks open-ended questions like 'which is most profitable?', 'which "
+        "feedstock should we use?', or 'which recovery method has the lowest GWP?', you MUST "
+        "consult the cross-scenario comparison arrays — do NOT restrict your answer to the "
+        "active_scenario only. Compare net_lcox_usd_per_kg, npv_usd_million, and "
+        "primary_product_gwp_kgco2e_per_kg across the relevant comparison list, name the "
+        "winning configuration explicitly (category, feedstock, recovery method, capacity, "
+        "electricity case), and quote the supporting numbers."
+        "\n\n"
+        "FORMATTING — IMPORTANT:"
+        "\n  * Write currency as 'USD 13.78' or 'USD 13.78/kg', NOT '$13.78'."
+        "\n  * NEVER use LaTeX math notation (no $...$, no $$...$$, no \\( \\), no \\[ \\])."
+        "\n  * Use plain text and bullet lists. No equations."
+        "\n  * Be concise and quantitative; round to 2-3 significant figures."
+        "\n  * Do not invent references or numbers — every number you cite must come from the "
+        "provided JSON."
     )
 
 

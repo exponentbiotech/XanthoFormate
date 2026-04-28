@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -21,6 +22,7 @@ from formate_biorefinery_model.app_support import (
     all_slider_defaults,
     all_slider_specs,
     app_context_snapshot,
+    comprehensive_chat_context,
     current_config_summary,
     evaluate_dashboard_grid,
     figure_ids,
@@ -243,11 +245,15 @@ def _inject_css() -> None:
         }
         /* Floating chat launcher — visible from anywhere on the page.
            Streamlit ≥1.36 exposes the widget key as a CSS class on the
-           element-container, so we target .st-key-float_open_chat. */
+           element-container, so we target .st-key-float_open_chat.
+
+           bottom is set high enough to clear the Streamlit Community Cloud
+           badges (Manage app pill + status indicator) that occupy the
+           bottom-right of the viewport on deployed apps. */
         .st-key-float_open_chat {
             position: fixed !important;
-            bottom: 28px !important;
-            right: 28px !important;
+            bottom: 90px !important;
+            right: 24px !important;
             width: auto !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -277,8 +283,8 @@ def _inject_css() -> None:
         }
         @media (max-width: 768px) {
             .st-key-float_open_chat {
-                bottom: 16px !important;
-                right: 16px !important;
+                bottom: 80px !important;
+                right: 12px !important;
             }
             .st-key-float_open_chat button {
                 padding: 12px 18px !important;
@@ -695,6 +701,29 @@ def cached_grid(
     )
 
 
+@st.cache_data(show_spinner=False)
+def cached_chat_snapshot(
+    base_config: ScenarioConfig,
+    overrides: Dict[str, float],
+    _data_hash: str = "",
+) -> Dict[str, object]:
+    """Build the comprehensive cross-scenario snapshot the assistant uses.
+
+    Cached because building it runs ~20 small scenario evaluations covering all
+    recovery methods, feedstocks, electricity cases, capacities, and LCA credit
+    settings. With caching the dialog opens instantly after the first time the
+    user asks a question for a given configuration.
+    """
+    active = evaluate_scenario(base_config, overrides=overrides)
+    return comprehensive_chat_context(
+        base_config=base_config,
+        overrides=overrides,
+        active_evaluation=active,
+        source_rows=active.source_rows,
+        active_figure_ids=figure_ids(),
+    )
+
+
 def _section_header(kicker: str, title: str, subtitle: str) -> None:
     st.markdown(f"<div class='section-kicker'>{kicker}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
@@ -803,34 +832,57 @@ def build_figure(
     return builders[fig_id]()
 
 
+_DOLLAR_PATTERN = re.compile(r"(?<!\\)\$")
+
+
+def _sanitize_chat_reply(text: str) -> str:
+    r"""Escape bare ``$`` characters so Streamlit does not render currency as LaTeX math.
+
+    Streamlit's ``st.markdown`` interprets ``$...$`` as inline math, which mangles
+    common currency strings like ``$13.78, ... $-6.12`` into italicised, space-
+    collapsed equations. We escape every unescaped ``$`` to ``\$``. This domain
+    has no legitimate inline LaTeX, so the trade-off is safe.
+    """
+    if not text:
+        return text
+    return _DOLLAR_PATTERN.sub(r"\\$", text)
+
+
 @st.dialog("Biorefinery Assistant", width="large")
 def _open_chat_dialog(
     api_key: str,
     model: str,
     current_eval,
+    snapshot: Dict[str, object],
 ) -> None:
     """Pop-up chat modal so the assistant's reply is visible without scrolling.
 
     Uses Streamlit's dialog (which is fragment-like) — when the user submits
     inside ``st.chat_input``, only this dialog re-renders, so the modal stays
     open with the new message visible at the top of the viewport.
+
+    ``snapshot`` is the pre-built comprehensive context (computed once when the
+    dialog is opened and reused across fragment reruns), so the LLM sees ALL
+    production modes — every recovery method, feedstock, electricity case, and
+    capacity — not just the active sidebar scenario.
     """
     if "groq_messages" not in st.session_state:
         st.session_state.groq_messages = []
 
     scenario = current_eval.foreground.scenario
     st.caption(
-        f"Model: `{model}`. Grounded in the active scenario "
-        f"({_display_pathway_label(scenario)}, "
-        f"{int(scenario.annual_primary_product_tpy):,} t/y)."
+        f"Model: `{model}`. Grounded in the full model "
+        f"(active: {_display_pathway_label(scenario)}, "
+        f"{int(scenario.annual_primary_product_tpy):,} t/y; the assistant can also "
+        f"compare alternative recovery methods, feedstocks, capacities, and electricity cases)."
     )
 
     history = st.container(height=420)
     with history:
         if not st.session_state.groq_messages:
             st.caption(
-                "Ask about the current scenario, which route looks most attractive, "
-                "or how a slider change would affect cost and GWP."
+                "Ask about the current scenario, which production mode is most profitable, "
+                "which feedstock to use, or how a slider change would affect cost and GWP."
             )
         for message in st.session_state.groq_messages:
             with st.chat_message(message["role"]):
@@ -844,13 +896,8 @@ def _open_chat_dialog(
                 st.markdown(prompt)
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    snapshot = app_context_snapshot(
-                        current_eval,
-                        current_eval.source_rows,
-                        active_figure_ids=figure_ids(),
-                    )
                     try:
-                        reply = ask_groq(
+                        raw_reply = ask_groq(
                             api_key=api_key,
                             question=prompt,
                             snapshot=snapshot,
@@ -858,7 +905,8 @@ def _open_chat_dialog(
                             model=model,
                         )
                     except Exception as exc:
-                        reply = f"Groq request failed: {exc}"
+                        raw_reply = f"Groq request failed: {exc}"
+                reply = _sanitize_chat_reply(raw_reply)
                 st.markdown(reply)
         st.session_state.groq_messages.append({"role": "assistant", "content": reply})
 
@@ -1058,10 +1106,12 @@ def main() -> None:
               if _chat_ready
               else "Add a Groq API key in the sidebar to enable chat."),
     ):
+        _chat_snapshot = cached_chat_snapshot(current_config, overrides, _data_hash=_dhash)
         _open_chat_dialog(
             api_key=api_key,
             model=_floating_model,
             current_eval=current_eval,
+            snapshot=_chat_snapshot,
         )
 
     _section_header(
@@ -1256,10 +1306,12 @@ def main() -> None:
         st.info("Add a Groq API key in the sidebar or set `GROQ_API_KEY` in deployment secrets to enable chat.")
 
     if open_chat and chat_available:
+        _chat_snapshot = cached_chat_snapshot(current_config, overrides, _data_hash=_dhash)
         _open_chat_dialog(
             api_key=api_key,
             model=groq_model,
             current_eval=current_eval,
+            snapshot=_chat_snapshot,
         )
 
 
