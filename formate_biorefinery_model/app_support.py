@@ -742,6 +742,121 @@ _METRIC_FIELDS = (
 )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Plain-English translation tables for the LLM-facing snapshot.
+#  The model frequently echoed snake_case identifiers (e.g. "npv_usd_million",
+#  "ammonia_scp", "struvite_map") back to users. Translating values up front
+#  removes the temptation: every key it sees is already a human-readable label.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Snake-case categorical IDs → friendly labels. Strings are unique across the
+# vocabulary, so a single flat map is sufficient.
+_VALUE_LABELS: Dict[str, str] = {
+    # Categories / pathways
+    "ammonia_scp": "Ammonia + SCP",
+    "bio_urea_scp": "Urea + SCP",
+    # Feedstocks
+    "formate": "Formate (CO2 electrolysis)",
+    "h2_co2": "H2/CO2 (water electrolysis)",
+    "methanol": "Methanol (purchased)",
+    # Electricity cases
+    "us_grid": "US grid average",
+    "renewable": "Renewable (wind/solar PPA)",
+    # CO2 sources
+    "biogenic_waste": "Biogenic waste CO2 (corn-ethanol off-gas)",
+    "dac": "Direct air capture (DAC)",
+    "fossil_capture": "Fossil-fuel CCS",
+    # NH3 recovery methods
+    "struvite_map": "Struvite (MgNH4PO4)",
+    "membrane": "Hollow-fiber membrane",
+    "vacuum_stripping": "Vacuum stripping",
+    "air_stripping": "Air stripping",
+    "map_fertilizer": "MAP fertilizer (NH4H2PO4)",
+    # Urea recovery methods
+    "mvr_crystallization": "MVR + crystallization",
+    "evaporation": "Single-effect evaporation",
+    "evaporation_crystallization": "Single-effect evaporation + crystallization",
+    "hybrid": "Membrane pre-concentration + evaporation",
+    "membrane_polishing": "Membrane pre-concentration + evaporation",
+    # Primary product names (from to_dict)
+    "ammonia": "Ammonia",
+    "urea": "Urea",
+}
+
+# Internal field names → friendly labels (with units). Both _compact_eval and
+# ScenarioEvaluation.to_dict styles are listed because they coexist in the
+# snapshot.
+_FIELD_RENAME: Dict[str, str] = {
+    "scenario": "Pathway",
+    "category": "Pathway",
+    "feedstock": "Feedstock",
+    "feedstock_type": "Feedstock",
+    "capacity_tpy": "Plant capacity (t/y)",
+    "annual_primary_product_tpy": "Plant capacity (t/y)",
+    "electricity_case": "Electricity case",
+    "co2_source": "CO2 source",
+    "nh3_recovery_method": "NH3 recovery method",
+    "ammonia_recovery_method": "NH3 recovery method",
+    "urea_recovery_method": "Urea recovery method",
+    "use_scp_credit": "SCP co-product credit enabled",
+    "use_biogenic_carbon_credit": "Biogenic carbon credit enabled",
+    "use_scp_displacement_credit": "Protein displacement credit enabled",
+    "primary_product_name": "Primary product",
+    "sellable_primary_product_kg_per_y": "Annual primary product (kg/y)",
+    "annual_scp_kg_per_y": "Annual SCP (kg/y)",
+    "working_volume_m3": "Working volume (m3)",
+    "gross_primary_lcox_usd_per_kg": "Gross LCOX (USD/kg)",
+    "net_primary_lcox_usd_per_kg": "Net LCOX (USD/kg)",
+    "gross_lcox_usd_per_kg": "Gross LCOX (USD/kg)",
+    "net_lcox_usd_per_kg": "Net LCOX (USD/kg)",
+    "npv_usd": "NPV (USD)",
+    "npv_usd_million": "NPV (million USD)",
+    "primary_product_gwp_kgco2e_per_kg": "GWP (kg CO2e per kg product)",
+    "combined_output_gwp_kgco2e_per_kg": "Combined output GWP (kg CO2e/kg)",
+    "gwp_kgco2e_per_kg": "GWP (kg CO2e per kg product)",
+}
+
+
+def _friendlify_winner_id(id_str: str) -> str:
+    """Translate the pipe-separated winner ID into plain English."""
+    parts = id_str.split("|")
+    if len(parts) < 5:
+        return id_str
+    cat, feedstock, cap, elec, method = parts[:5]
+    cat_lbl = _VALUE_LABELS.get(cat, cat)
+    feed_lbl = _VALUE_LABELS.get(feedstock, feedstock)
+    elec_lbl = _VALUE_LABELS.get(elec, elec)
+    if method.startswith("nh3="):
+        m_lbl = "NH3 recovery: " + _VALUE_LABELS.get(method[4:], method[4:])
+    elif method.startswith("urea="):
+        m_lbl = "Urea recovery: " + _VALUE_LABELS.get(method[5:], method[5:])
+    else:
+        m_lbl = method
+    return (
+        f"{cat_lbl} | feedstock: {feed_lbl} | capacity: {cap} | "
+        f"electricity: {elec_lbl} | {m_lbl}"
+    )
+
+
+def _friendlify(obj: object) -> object:
+    """Recursively rename keys and translate categorical values to plain English."""
+    if isinstance(obj, list):
+        return [_friendlify(item) for item in obj]
+    if isinstance(obj, dict):
+        out: Dict[str, object] = {}
+        for k, v in obj.items():
+            new_key = _FIELD_RENAME.get(k, k)
+            if k == "id" and isinstance(v, str):
+                v = _friendlify_winner_id(v)
+            elif isinstance(v, str) and v in _VALUE_LABELS:
+                v = _VALUE_LABELS[v]
+            else:
+                v = _friendlify(v)
+            out[new_key] = v
+        return out
+    return obj
+
+
 def _compact_eval(eval_result: ScenarioEvaluation) -> Dict[str, object]:
     """Compact JSON-friendly summary of a scenario evaluation for LLM context."""
     cfg = eval_result.foreground.scenario
@@ -833,42 +948,22 @@ def _ranking_summary(
 ) -> Dict[str, object]:
     """Precompute common "which is best?" answers so the LLM does not rank rows itself."""
     all_current_capacity_modes = list(nh3_methods) + list(urea_methods)
+
+    def _block(rows: Sequence[Dict[str, object]]) -> Dict[str, object]:
+        return {
+            "Highest NPV": _winner(rows, "npv_usd_million", maximize=True),
+            "Lowest Net LCOX": _winner(rows, "net_lcox_usd_per_kg"),
+            "Lowest GWP": _winner(rows, "primary_product_gwp_kgco2e_per_kg"),
+        }
+
     return {
-        "current_capacity_all_production_modes": {
-            "highest_npv": _winner(all_current_capacity_modes, "npv_usd_million", maximize=True),
-            "lowest_net_lcox": _winner(all_current_capacity_modes, "net_lcox_usd_per_kg"),
-            "lowest_gwp": _winner(all_current_capacity_modes, "primary_product_gwp_kgco2e_per_kg"),
-        },
-        "feedstock": {
-            "highest_npv": _winner(feedstock_variants, "npv_usd_million", maximize=True),
-            "lowest_net_lcox": _winner(feedstock_variants, "net_lcox_usd_per_kg"),
-            "lowest_gwp": _winner(feedstock_variants, "primary_product_gwp_kgco2e_per_kg"),
-        },
-        "nh3_recovery_method": {
-            "highest_npv": _winner(nh3_methods, "npv_usd_million", maximize=True),
-            "lowest_net_lcox": _winner(nh3_methods, "net_lcox_usd_per_kg"),
-            "lowest_gwp": _winner(nh3_methods, "primary_product_gwp_kgco2e_per_kg"),
-        },
-        "urea_recovery_method": {
-            "highest_npv": _winner(urea_methods, "npv_usd_million", maximize=True),
-            "lowest_net_lcox": _winner(urea_methods, "net_lcox_usd_per_kg"),
-            "lowest_gwp": _winner(urea_methods, "primary_product_gwp_kgco2e_per_kg"),
-        },
-        "capacity": {
-            "highest_npv": _winner(capacity_curve, "npv_usd_million", maximize=True),
-            "lowest_net_lcox": _winner(capacity_curve, "net_lcox_usd_per_kg"),
-            "lowest_gwp": _winner(capacity_curve, "primary_product_gwp_kgco2e_per_kg"),
-        },
-        "electricity_case": {
-            "highest_npv": _winner(electricity_variants, "npv_usd_million", maximize=True),
-            "lowest_net_lcox": _winner(electricity_variants, "net_lcox_usd_per_kg"),
-            "lowest_gwp": _winner(electricity_variants, "primary_product_gwp_kgco2e_per_kg"),
-        },
-        "lca_accounting_case": {
-            "highest_npv": _winner(credit_sensitivity, "npv_usd_million", maximize=True),
-            "lowest_net_lcox": _winner(credit_sensitivity, "net_lcox_usd_per_kg"),
-            "lowest_gwp": _winner(credit_sensitivity, "primary_product_gwp_kgco2e_per_kg"),
-        },
+        "Across all production modes (NH3 and Urea, current capacity)": _block(all_current_capacity_modes),
+        "Feedstock comparison": _block(feedstock_variants),
+        "NH3 recovery method comparison": _block(nh3_methods),
+        "Urea recovery method comparison": _block(urea_methods),
+        "Capacity scaling": _block(capacity_curve),
+        "Electricity case comparison": _block(electricity_variants),
+        "LCA credit sensitivity": _block(credit_sensitivity),
     }
 
 
@@ -968,14 +1063,15 @@ def comprehensive_chat_context(
         }),
     ]
 
-    return {
-        "notes": (
-            "All 'lcox_usd_per_kg' values are USD per kg of PRIMARY product. "
-            "Negative net_lcox means SCP / co-product credits exceed variable cost. "
-            "computed_rankings contains deterministic Python-ranked winners; use it first for 'which is best' questions. "
-            "Each comparison list varies one axis; constant fields are omitted to save tokens."
+    raw_snapshot: Dict[str, object] = {
+        "Notes": (
+            "All field names and values are already plain English; use them verbatim in "
+            "the reply and never echo any snake_case identifier. Negative 'Net LCOX (USD/kg)' "
+            "means SCP / co-product credits exceed variable cost. 'Precomputed best options' "
+            "lists Python-ranked winners — consult it FIRST for 'which is best' questions. "
+            "Each comparison list varies one axis; constant fields are omitted."
         ),
-        "computed_rankings": _ranking_summary(
+        "Precomputed best options": _ranking_summary(
             nh3_methods=nh3_methods,
             urea_methods=urea_methods,
             feedstock_variants=feedstock_variants,
@@ -983,11 +1079,12 @@ def comprehensive_chat_context(
             capacity_curve=capacity_curve,
             credit_sensitivity=credit_sensitivity,
         ),
-        "active_scenario": active_evaluation.to_dict(),
-        "nh3_recovery_method_comparison": _strip_constant_fields(nh3_methods),
-        "urea_recovery_method_comparison": _strip_constant_fields(urea_methods),
-        "feedstock_comparison": _strip_constant_fields(feedstock_variants),
-        "electricity_case_comparison": _strip_constant_fields(electricity_variants),
-        "capacity_scaling": _strip_constant_fields(capacity_curve),
-        "lca_credit_sensitivity": _strip_constant_fields(credit_sensitivity),
+        "Active scenario": active_evaluation.to_dict(),
+        "NH3 recovery method comparison": _strip_constant_fields(nh3_methods),
+        "Urea recovery method comparison": _strip_constant_fields(urea_methods),
+        "Feedstock comparison": _strip_constant_fields(feedstock_variants),
+        "Electricity case comparison": _strip_constant_fields(electricity_variants),
+        "Capacity scaling": _strip_constant_fields(capacity_curve),
+        "LCA credit sensitivity": _strip_constant_fields(credit_sensitivity),
     }
+    return _friendlify(raw_snapshot)  # type: ignore[return-value]
