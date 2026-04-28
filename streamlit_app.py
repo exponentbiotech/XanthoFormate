@@ -30,7 +30,12 @@ from formate_biorefinery_model.app_support import (
     reference_summary,
     source_rows_for_display,
 )
-from formate_biorefinery_model.groq_chat import DEFAULT_GROQ_MODEL, ask_groq, groq_available
+from formate_biorefinery_model.groq_chat import (
+    DEFAULT_GROQ_MODEL,
+    ask_groq,
+    deterministic_answer,
+    groq_available,
+)
 from formate_biorefinery_model.reporting import (
     figure_metadata,
     plot_annual_cashflow,
@@ -668,7 +673,7 @@ def _display_pathway_label(config: ScenarioConfig) -> str:
     return f"{product} via {feed_prefix}" if feed_prefix else product
 
 
-_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v7-deterministic-profitability"
+_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v8-deterministic-in-app"
 
 
 def _data_fingerprint() -> str:
@@ -878,11 +883,20 @@ def _open_chat_dialog(
         st.session_state.groq_messages = []
 
     scenario = current_eval.foreground.scenario
+    metrics = current_eval.tea.metrics
+    lca_metrics = current_eval.lca.metrics
     st.caption(
         f"Model: `{model}`. Grounded in the full model "
         f"(active: {_display_pathway_label(scenario)}, "
         f"{int(scenario.annual_primary_product_tpy):,} t/y; the assistant can also "
         f"compare alternative recovery methods, feedstocks, capacities, and electricity cases)."
+    )
+    st.caption(
+        "**Active TEA results from the Python model**  ·  "
+        f"NPV {metrics['npv_usd'] / 1e6:.1f}M USD  ·  "
+        f"Net LCOX {metrics['net_primary_lcox_usd_per_kg']:.2f} USD/kg NH3-eq  ·  "
+        f"Gross LCOX {metrics['gross_primary_lcox_usd_per_kg']:.2f} USD/kg  ·  "
+        f"GWP {lca_metrics['primary_product_gwp_kgco2e_per_kg']:.2f} kg CO2e/kg"
     )
 
     history = st.container(height=420)
@@ -904,25 +918,37 @@ def _open_chat_dialog(
                 st.markdown(prompt)
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    try:
-                        raw_reply = ask_groq(
-                            api_key=api_key,
-                            question=prompt,
-                            snapshot=snapshot,
-                            history=st.session_state.groq_messages[:-1],
-                            model=model,
+                    raw_reply: str
+                    grounded = deterministic_answer(prompt, snapshot)
+                    if grounded:
+                        raw_reply = (
+                            "*Computed directly from the Python TEA model — no LLM was used "
+                            "for these numbers.*\n\n" + grounded
                         )
-                    except Exception as exc:
-                        msg = str(exc)
-                        if "rate_limit_exceeded" in msg or "Request too large" in msg or "TPM" in msg:
-                            raw_reply = (
-                                "**Groq rate limit hit.**  The free tier caps "
-                                "`llama-3.1-8b-instant` at 6,000 tokens per minute. "
-                                "Wait ~60 seconds and try again, or pick a higher-TPM model "
-                                "(e.g. `llama-3.3-70b-versatile`) from the model selector below."
+                    else:
+                        try:
+                            llm_reply = ask_groq(
+                                api_key=api_key,
+                                question=prompt,
+                                snapshot=snapshot,
+                                history=st.session_state.groq_messages[:-1],
+                                model=model,
                             )
-                        else:
-                            raw_reply = f"Groq request failed: {exc}"
+                            raw_reply = (
+                                "*LLM interpretation of the Python model results — verify any number "
+                                "against the TEA panel above.*\n\n" + llm_reply
+                            )
+                        except Exception as exc:
+                            msg = str(exc)
+                            if "rate_limit_exceeded" in msg or "Request too large" in msg or "TPM" in msg:
+                                raw_reply = (
+                                    "**Groq rate limit hit.**  The free tier caps "
+                                    "`llama-3.1-8b-instant` at 6,000 tokens per minute. "
+                                    "Wait ~60 seconds and try again, or pick a higher-TPM model "
+                                    "(e.g. `llama-3.3-70b-versatile`) from the model selector below."
+                                )
+                            else:
+                                raw_reply = f"Groq request failed: {exc}"
                 reply = _sanitize_chat_reply(raw_reply)
                 st.markdown(reply)
         st.session_state.groq_messages.append({"role": "assistant", "content": reply})
