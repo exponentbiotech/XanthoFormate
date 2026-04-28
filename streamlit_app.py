@@ -905,7 +905,16 @@ def _open_chat_dialog(
                             model=model,
                         )
                     except Exception as exc:
-                        raw_reply = f"Groq request failed: {exc}"
+                        msg = str(exc)
+                        if "rate_limit_exceeded" in msg or "Request too large" in msg or "TPM" in msg:
+                            raw_reply = (
+                                "**Groq rate limit hit.**  The free tier caps "
+                                "`llama-3.1-8b-instant` at 6,000 tokens per minute. "
+                                "Wait ~60 seconds and try again, or pick a higher-TPM model "
+                                "(e.g. `llama-3.3-70b-versatile`) from the model selector below."
+                            )
+                        else:
+                            raw_reply = f"Groq request failed: {exc}"
                 reply = _sanitize_chat_reply(raw_reply)
                 st.markdown(reply)
         st.session_state.groq_messages.append({"role": "assistant", "content": reply})

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -733,6 +734,14 @@ def app_context_snapshot(
     }
 
 
+_METRIC_FIELDS = (
+    "gross_lcox_usd_per_kg",
+    "net_lcox_usd_per_kg",
+    "npv_usd_million",
+    "primary_product_gwp_kgco2e_per_kg",
+)
+
+
 def _compact_eval(eval_result: ScenarioEvaluation) -> Dict[str, object]:
     """Compact JSON-friendly summary of a scenario evaluation for LLM context."""
     cfg = eval_result.foreground.scenario
@@ -753,9 +762,26 @@ def _compact_eval(eval_result: ScenarioEvaluation) -> Dict[str, object]:
         "net_lcox_usd_per_kg": round(float(m["net_primary_lcox_usd_per_kg"]), 3),
         "npv_usd_million": round(float(m["npv_usd"]) / 1e6, 2),
         "primary_product_gwp_kgco2e_per_kg": round(float(l["primary_product_gwp_kgco2e_per_kg"]), 3),
-        "annual_primary_kg": round(float(eval_result.foreground.sellable_primary_product_kg), 0),
-        "annual_scp_kg": round(float(eval_result.foreground.annual_scp_kg), 0),
     }
+
+
+def _strip_constant_fields(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    """Drop fields that are identical across every row.
+
+    The LLM only needs to see fields that VARY within a comparison list. Stripping
+    constants shaves substantial tokens off the prompt (e.g. urea_recovery_method
+    is always 'evaporation' inside the NH3 method list, so it's noise).
+    Always preserves the metric fields and the scenario category.
+    """
+    if not rows:
+        return rows
+    keys = list(rows[0].keys())
+    constant_keys = {
+        k for k in keys
+        if k not in _METRIC_FIELDS and k != "category"
+        and len({json.dumps(row.get(k), sort_keys=True, default=str) for row in rows}) <= 1
+    }
+    return [{k: v for k, v in row.items() if k not in constant_keys} for row in rows]
 
 
 def comprehensive_chat_context(
@@ -854,30 +880,17 @@ def comprehensive_chat_context(
         }),
     ]
 
-    metadata = load_figure_metadata()
     return {
-        "explanatory_notes": [
-            "All 'lcox_usd_per_kg' numbers are in USD per kilogram of PRIMARY product.",
-            "Negative net LCOX means the SCP / co-product credits exceed the variable cost basis.",
-            "GWP (kg CO2e/kg) is allocated to the primary product after biogenic / displacement credits when those are enabled in the scenario.",
-            "Each comparison fixes everything except the listed axis at the user's current sidebar settings.",
-        ],
-        "active_scenario": {
-            "config": current_config_summary(active_evaluation.foreground.scenario),
-            "kpis": active_evaluation.to_dict(),
-            "tea_metrics": active_evaluation.tea.metrics,
-            "lca_metrics": active_evaluation.lca.metrics,
-        },
-        "nh3_recovery_method_comparison": nh3_methods,
-        "urea_recovery_method_comparison": urea_methods,
-        "feedstock_comparison": feedstock_variants,
-        "electricity_case_comparison": electricity_variants,
-        "capacity_scaling": capacity_curve,
-        "lca_credit_sensitivity": credit_sensitivity,
-        "active_figures": {
-            figure_id: metadata[figure_id]
-            for figure_id in active_figure_ids
-            if figure_id in metadata
-        },
-        "source_rows_count": len(source_rows),
+        "notes": (
+            "All 'lcox_usd_per_kg' values are USD per kg of PRIMARY product. "
+            "Negative net_lcox means SCP / co-product credits exceed variable cost. "
+            "Each comparison list varies one axis; constant fields are omitted to save tokens."
+        ),
+        "active_scenario": active_evaluation.to_dict(),
+        "nh3_recovery_method_comparison": _strip_constant_fields(nh3_methods),
+        "urea_recovery_method_comparison": _strip_constant_fields(urea_methods),
+        "feedstock_comparison": _strip_constant_fields(feedstock_variants),
+        "electricity_case_comparison": _strip_constant_fields(electricity_variants),
+        "capacity_scaling": _strip_constant_fields(capacity_curve),
+        "lca_credit_sensitivity": _strip_constant_fields(credit_sensitivity),
     }

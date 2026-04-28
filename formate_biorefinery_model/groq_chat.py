@@ -11,8 +11,14 @@ except ModuleNotFoundError:  # pragma: no cover
 
 DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant"
 
-# Maximum number of previous chat turns to include (each turn = 1 user + 1 assistant msg)
-_MAX_HISTORY_TURNS = 4
+# Maximum number of previous chat turns to include (each turn = 1 user + 1 assistant msg).
+# Kept low because the comprehensive snapshot already consumes ~3-4k tokens per
+# request; the Groq free tier caps llama-3.1-8b-instant at 6,000 tokens/minute.
+_MAX_HISTORY_TURNS = 2
+
+# Cap on assistant reply length. Counts toward Groq's TPM budget even if the
+# model returns fewer tokens, so we keep this conservative.
+_MAX_REPLY_TOKENS = 600
 
 
 def groq_available() -> bool:
@@ -20,7 +26,7 @@ def groq_available() -> bool:
 
 
 _COMPREHENSIVE_KEYS = (
-    "explanatory_notes",
+    "notes",
     "active_scenario",
     "nh3_recovery_method_comparison",
     "urea_recovery_method_comparison",
@@ -126,7 +132,7 @@ def ask_groq(
         model=model,
         messages=build_messages(question, snapshot=snapshot, history=history),
         temperature=0.2,
-        max_tokens=1024,  # cap reply size to stay within free-tier TPM limits
+        max_tokens=_MAX_REPLY_TOKENS,
     )
     message = completion.choices[0].message.content
     return message if message is not None else ""
