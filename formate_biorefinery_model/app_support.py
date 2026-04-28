@@ -910,23 +910,31 @@ def _best_row(
     return dict(best)
 
 
-def _winner_ref(row: Dict[str, object]) -> Dict[str, object]:
-    """Short reference to a winning row, optimized for LLM token budget."""
+def _winner_ref(row: Dict[str, object]) -> str:
+    """Compact one-line summary of a winning row for the LLM context.
+
+    Returning a single string (rather than a nested dict with friendly keys)
+    cuts ~60% of the token cost for the rankings block while still giving
+    the LLM everything it needs to cite the configuration and numbers.
+    """
     category = str(row.get("category", ""))
-    method = (
-        f"nh3={row.get('nh3_recovery_method')}"
-        if category == ScenarioCategory.AMMONIA_SCP.value
-        else f"urea={row.get('urea_recovery_method')}"
+    cat_lbl = _VALUE_LABELS.get(category, category)
+    feed_lbl = _VALUE_LABELS.get(str(row.get("feedstock", "")), str(row.get("feedstock", "")))
+    elec_lbl = _VALUE_LABELS.get(str(row.get("electricity_case", "")), str(row.get("electricity_case", "")))
+    if category == ScenarioCategory.AMMONIA_SCP.value:
+        rec_id = str(row.get("nh3_recovery_method", ""))
+        rec_lbl = "NH3 recovery: " + _VALUE_LABELS.get(rec_id, rec_id)
+    else:
+        rec_id = str(row.get("urea_recovery_method", ""))
+        rec_lbl = "Urea recovery: " + _VALUE_LABELS.get(rec_id, rec_id)
+    cap = row.get("capacity_tpy")
+    npv = row.get("npv_usd_million")
+    lcox = row.get("net_lcox_usd_per_kg")
+    gwp = row.get("primary_product_gwp_kgco2e_per_kg")
+    return (
+        f"{cat_lbl}, {feed_lbl}, {rec_lbl}, {cap:.0f} t/y, {elec_lbl} — "
+        f"NPV USD {npv:.1f}M, Net LCOX USD {lcox:.2f}/kg, GWP {gwp:.2f} kgCO2e/kg"
     )
-    return {
-        "id": (
-            f"{category}|{row.get('feedstock')}|{row.get('capacity_tpy')} t/y|"
-            f"{row.get('electricity_case')}|{method}"
-        ),
-        "net_lcox_usd_per_kg": row.get("net_lcox_usd_per_kg"),
-        "npv_usd_million": row.get("npv_usd_million"),
-        "gwp_kgco2e_per_kg": row.get("primary_product_gwp_kgco2e_per_kg"),
-    }
 
 
 def _winner(
