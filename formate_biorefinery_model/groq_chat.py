@@ -36,6 +36,18 @@ _COMPREHENSIVE_KEYS = (
     "LCA credit sensitivity",
 )
 
+_PROFITABILITY_TERMS = (
+    "profit",
+    "profitable",
+    "profitability",
+    "npv",
+    "best economics",
+    "most attractive",
+    "most realistic",
+    "nh3 or urea",
+    "ammonia or urea",
+)
+
 
 def _trim_snapshot(snapshot: Mapping[str, object]) -> dict:
     """Return a compact subset of the app snapshot safe for prompt construction.
@@ -97,6 +109,127 @@ def _fmt_rows(rows: object, *, limit: int = 8) -> str:
     if not isinstance(rows, list):
         return str(rows)
     return "\n".join(f"- {_fmt_row(row)}" for row in rows[:limit])
+
+
+def _as_mapping(value: object) -> Mapping[str, object]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _find_row(
+    rows: object,
+    *,
+    metric: str = "NPV (million USD)",
+    maximize: bool = True,
+) -> Mapping[str, object]:
+    if not isinstance(rows, list):
+        return {}
+    candidates = [row for row in rows if isinstance(row, Mapping) and isinstance(row.get(metric), (int, float))]
+    if not candidates:
+        return {}
+    return (max if maximize else min)(candidates, key=lambda row: float(row[metric]))
+
+
+def _with_active_defaults(row: Mapping[str, object], active: Mapping[str, object]) -> Mapping[str, object]:
+    """Restore constants stripped from comparison rows for prompt-token savings."""
+    merged = dict(active)
+    merged.update(row)
+    return merged
+
+
+def _money_m(value: object) -> str:
+    if isinstance(value, (int, float)):
+        return f"USD {value:.1f}M"
+    return "not reported"
+
+
+def _money_per_kg(value: object) -> str:
+    if isinstance(value, (int, float)):
+        return f"USD {value:.2f}/kg"
+    return "not reported"
+
+
+def _gwp(value: object) -> str:
+    if isinstance(value, (int, float)):
+        return f"{value:.2g} kg CO2e/kg"
+    return "not reported"
+
+
+def _brief_config(row: Mapping[str, object]) -> str:
+    pathway = str(row.get("Pathway", ""))
+    recovery = row.get("Urea recovery method") if pathway.startswith("Urea") else row.get("NH3 recovery method")
+    pieces = [
+        pathway.strip(),
+        f"{row.get('Feedstock')} feedstock" if row.get("Feedstock") else "",
+        str(recovery or "").strip(),
+        f"{float(row['Plant capacity (t/y)']):,.0f} t/y" if isinstance(row.get("Plant capacity (t/y)"), (int, float)) else "",
+        str(row.get("Electricity case", "")).strip(),
+    ]
+    return ", ".join(piece for piece in pieces if piece)
+
+
+def _profitability_answer(snapshot: Mapping[str, object]) -> Optional[str]:
+    """Deterministic model-inference answer for the questions most sensitive to hallucinated numbers."""
+    data = _trim_snapshot(snapshot)
+    if "Active scenario" not in data:
+        return None
+
+    active = _as_mapping(data.get("Active scenario"))
+    nh3_best = _with_active_defaults(_find_row(data.get("NH3 recovery method comparison")), active)
+    urea_best = _with_active_defaults(_find_row(data.get("Urea recovery method comparison")), active)
+    feed_best = _with_active_defaults(_find_row(data.get("Feedstock comparison")), active)
+    scale_best = _with_active_defaults(_find_row(data.get("Capacity scaling")), active)
+
+    current_best: Mapping[str, object] = {}
+    if nh3_best and urea_best:
+        current_best = nh3_best if float(nh3_best["NPV (million USD)"]) >= float(urea_best["NPV (million USD)"]) else urea_best
+    else:
+        current_best = nh3_best or urea_best
+
+    if not current_best:
+        return None
+
+    active_capacity = active.get("Plant capacity (t/y)")
+    capacity_text = f"{float(active_capacity):,.0f} t/y" if isinstance(active_capacity, (int, float)) else "the active scale"
+
+    answer = (
+        f"Using the code’s TEA calculation at **{capacity_text}**, the strongest current product/recovery choice is "
+        f"**{_brief_config(current_best)}**. That case has NPV of **{_money_m(current_best.get('NPV (million USD)'))}**, "
+        f"Net LCOX of **{_money_per_kg(current_best.get('Net LCOX (USD/kg)'))}**, and GWP of "
+        f"**{_gwp(current_best.get('GWP (kg CO2e per kg product)'))}**.\n\n"
+    )
+
+    if feed_best:
+        answer += (
+            f"If you also let the feedstock vary, the highest-NPV feedstock case in the model is "
+            f"**{_brief_config(feed_best)}**, at **{_money_m(feed_best.get('NPV (million USD)'))}**. "
+        )
+
+    if urea_best:
+        answer += (
+            f"For comparison, the best urea case at this same scale is **{_brief_config(urea_best)}**, "
+            f"with NPV of **{_money_m(urea_best.get('NPV (million USD)'))}**. "
+        )
+
+    if scale_best:
+        answer += (
+            f"The scale sensitivity is separate: the best active-route scale shown is "
+            f"**{_brief_config(scale_best)}**, with NPV of **{_money_m(scale_best.get('NPV (million USD)'))}**. "
+            f"So a 10,000 t/y result should not be described as the 1,000 t/y case."
+        )
+
+    answer += (
+        "\n\nImportant caveat: the Struvite cases look attractive because the model assigns a large fertilizer-product "
+        "value and reports LCOX per kg NH3-equivalent. That is a model assumption, not a guarantee that the market "
+        "can absorb the product at that value."
+    )
+    return answer
+
+
+def deterministic_answer(question: str, snapshot: Mapping[str, object]) -> Optional[str]:
+    q = question.lower()
+    if any(term in q for term in _PROFITABILITY_TERMS):
+        return _profitability_answer(snapshot)
+    return None
 
 
 def build_chat_context(snapshot: Mapping[str, object]) -> str:
@@ -229,6 +362,10 @@ def ask_groq(
         raise ValueError("A Groq API key is required.")
     if Groq is None:
         raise RuntimeError("The groq package is not installed.")
+
+    grounded = deterministic_answer(question, snapshot)
+    if grounded:
+        return grounded
 
     client = Groq(api_key=api_key)
     completion = client.chat.completions.create(

@@ -668,7 +668,7 @@ def _display_pathway_label(config: ScenarioConfig) -> str:
     return f"{product} via {feed_prefix}" if feed_prefix else product
 
 
-_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v6-no-canned-chat-examples"
+_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v7-deterministic-profitability"
 
 
 def _data_fingerprint() -> str:
