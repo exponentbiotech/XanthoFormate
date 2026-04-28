@@ -668,10 +668,18 @@ def _display_pathway_label(config: ScenarioConfig) -> str:
     return f"{product} via {feed_prefix}" if feed_prefix else product
 
 
+_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v3-friendly"
+
+
 def _data_fingerprint() -> str:
-    """Hash the CSV data files so the cache auto-busts when references change."""
+    """Hash the CSV data files + snapshot schema version so the cache auto-busts
+    when the references OR the snapshot shape change. Bump
+    ``_SNAPSHOT_SCHEMA_VERSION`` whenever the snapshot structure changes so old
+    cached payloads don't survive a deploy.
+    """
     import hashlib
     h = hashlib.md5()
+    h.update(_SNAPSHOT_SCHEMA_VERSION.encode())
     data_dir = Path(__file__).resolve().parent / "formate_biorefinery_model" / "data"
     for name in sorted(["economic_inputs.csv", "technology_inputs.csv", "lca_factors.csv"]):
         p = data_dir / name
