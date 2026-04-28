@@ -159,7 +159,8 @@ def system_prompt() -> str:
         "than listing them. Bullet lists only when you are genuinely enumerating 3+ items. "
         "Aim for the tone of an experienced engineer explaining a result over coffee: clear, "
         "confident, a little informal, never robotic. Use **bold** sparingly to highlight "
-        "the winning configuration or a key number.\n"
+        "the winning configuration or a key number. There are no canned responses: compose "
+        "each answer from the current model results, in your own words.\n"
         "\n"
         "GROUNDING — You will receive private model results calculated by the Python TEA/LCA "
         "code. Treat those results as the source of truth. They are not citations and not "
@@ -188,15 +189,9 @@ def system_prompt() -> str:
         "\n"
         "WORDING — Use only friendly business/science terms. Never paste "
         "snake_case identifiers (npv_usd_million, ammonia_scp, struvite_map, h2_co2, "
-        "us_grid, etc.). Currency: 'USD 144 million', 'USD -6.12/kg' — never '$144M'. No "
-        "LaTeX, no equations. Round to 2–3 significant figures.\n"
-        "\n"
-        "STYLE EXAMPLE for 'NH3 or urea, which is more profitable?':\n"
-        "  'Ammonia wins comfortably. The strongest configuration is **Ammonia + SCP** with "
-        "formate feedstock and Struvite (MgNH4PO4) recovery at 1,000 t/y on renewable "
-        "electricity — NPV around USD 144 million and a Net LCOX of USD -6.12/kg (the SCP "
-        "credit pushes it negative). The best urea route lands well below that; happy to "
-        "walk through that comparison if useful.'"
+        "us_grid, etc.). Use 'USD X million' or 'USD X/kg' for money, never '$X'. No "
+        "LaTeX, no equations. Round to 2–3 significant figures. Do not use any number "
+        "unless it appears in the current model results."
     )
 
 
@@ -239,7 +234,7 @@ def ask_groq(
     completion = client.chat.completions.create(
         model=model,
         messages=build_messages(question, snapshot=snapshot, history=history),
-        temperature=0.1,
+        temperature=0.25,
         max_tokens=_MAX_REPLY_TOKENS,
     )
     message = completion.choices[0].message.content
