@@ -29,6 +29,11 @@ from formate_biorefinery_model.app_support import (
     reference_summary,
     source_rows_for_display,
 )
+from formate_biorefinery_model.model_chat import (
+    DEFAULT_GROQ_MODEL,
+    answer_question,
+    is_llm_available,
+)
 from formate_biorefinery_model.model_interpreter import answer_model_question
 from formate_biorefinery_model.reporting import (
     figure_metadata,
@@ -659,7 +664,7 @@ def _display_pathway_label(config: ScenarioConfig) -> str:
     return f"{product} via {feed_prefix}" if feed_prefix else product
 
 
-_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v9-model-interpreter"
+_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v10-llm-code-aware"
 
 
 def _data_fingerprint() -> str:
@@ -851,6 +856,8 @@ def _sanitize_chat_reply(text: str) -> str:
 def _open_chat_dialog(
     current_eval,
     snapshot: Dict[str, object],
+    api_key: Optional[str],
+    model: str,
 ) -> None:
     """Pop-up chat modal so the assistant's reply is visible without scrolling.
 
@@ -858,23 +865,28 @@ def _open_chat_dialog(
     inside ``st.chat_input``, only this dialog re-renders, so the modal stays
     open with the new message visible at the top of the viewport.
 
-    ``snapshot`` is the pre-built comprehensive context (computed once when the
-    dialog is opened and reused across fragment reruns), so the deterministic
-    interpreter can compare ALL production modes — every recovery method,
-    feedstock, electricity case, and capacity — not just the active sidebar
-    scenario.
+    The chat is backed by Groq's hosted Llama 3.3 with the locked snapshot AND
+    the actual ``tea.py`` / ``lca.py`` source as context, so it can answer both
+    numeric "which is best?" questions and code/methodology questions like
+    "how is NPV computed?". When no API key is configured we fall back to the
+    deterministic interpreter so the chat never breaks.
     """
-    if "interpreter_messages" not in st.session_state:
-        st.session_state.interpreter_messages = []
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
 
     scenario = current_eval.foreground.scenario
     metrics = current_eval.tea.metrics
     lca_metrics = current_eval.lca.metrics
+    using_llm = is_llm_available(api_key)
+    backend_label = (
+        f"LLM backend: Groq · {model}" if using_llm
+        else "LLM unavailable — using the deterministic Python interpreter."
+    )
     st.caption(
-        "Model interpreter grounded in the Python TEA/LCA calculations "
-        f"(active: {_display_pathway_label(scenario)}, "
-        f"{int(scenario.annual_primary_product_tpy):,} t/y; compares recovery methods, "
-        "feedstocks, capacities, electricity cases, and LCA settings)."
+        f"Assistant for the active route ({_display_pathway_label(scenario)}, "
+        f"{int(scenario.annual_primary_product_tpy):,} t/y). It can compare every "
+        "recovery method, feedstock, capacity, electricity case, and LCA setting, "
+        "and explain the underlying Python TEA/LCA code. " + backend_label
     )
     st.caption(
         "**Active TEA results from the Python model**  ·  "
@@ -886,35 +898,43 @@ def _open_chat_dialog(
 
     history = st.container(height=420)
     with history:
-        if not st.session_state.interpreter_messages:
+        if not st.session_state.chat_messages:
             st.caption(
-                "Ask about the current scenario, which production mode is most profitable, "
-                "which feedstock to use, or how a slider change would affect cost and GWP."
+                "Ask about the current scenario, which production mode is most "
+                "(or least) profitable, how a slider would affect cost and GWP, "
+                "or how the Python code calculates NPV / LCOX / GWP."
             )
-        for message in st.session_state.interpreter_messages:
+        for message in st.session_state.chat_messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
     prompt = st.chat_input("Ask about the current scenario, outputs, or a hypothetical...")
     if prompt:
-        st.session_state.interpreter_messages.append({"role": "user", "content": prompt})
+        st.session_state.chat_messages.append({"role": "user", "content": prompt})
+        history_for_llm = list(st.session_state.chat_messages[:-1])
         with history:
             with st.chat_message("user"):
                 st.markdown(prompt)
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    raw_reply = answer_model_question(prompt, snapshot)
+                    raw_reply = answer_question(
+                        prompt,
+                        snapshot,
+                        history=history_for_llm,
+                        api_key=api_key,
+                        model=model,
+                    )
                 reply = _sanitize_chat_reply(raw_reply)
                 st.markdown(reply)
-        st.session_state.interpreter_messages.append({"role": "assistant", "content": reply})
+        st.session_state.chat_messages.append({"role": "assistant", "content": reply})
 
     btn_col1, btn_col2 = st.columns([1, 1])
     with btn_col1:
-        if st.button("Clear conversation", key="clear_interpreter_in_dialog", use_container_width=True):
-            st.session_state.interpreter_messages = []
+        if st.button("Clear conversation", key="clear_chat_in_dialog", use_container_width=True):
+            st.session_state.chat_messages = []
             st.rerun()
     with btn_col2:
-        if st.button("Close", key="close_interpreter_dialog", type="primary", use_container_width=True):
+        if st.button("Close", key="close_chat_dialog", type="primary", use_container_width=True):
             st.rerun()
 
 
@@ -1046,7 +1066,32 @@ def main() -> None:
                     overrides[spec.key] = value
 
         st.markdown("<div class='sidebar-chip'>Assistant</div>", unsafe_allow_html=True)
-        st.caption("Model Interpreter uses the Python TEA/LCA calculations directly.")
+        secret_groq_key = _secret("GROQ_API_KEY")
+        groq_api_key = st.text_input(
+            "Groq API key (free tier)",
+            value=secret_groq_key or "",
+            type="password",
+            help=(
+                "Used to power the in-app assistant via Groq's hosted Llama 3.3. "
+                "Set GROQ_API_KEY in Streamlit secrets to populate by default. "
+                "If left blank, the chat falls back to a deterministic Python interpreter."
+            ),
+        ).strip()
+        groq_model = st.selectbox(
+            "Groq model",
+            options=[
+                DEFAULT_GROQ_MODEL,
+                "llama-3.1-70b-versatile",
+                "llama-3.1-8b-instant",
+                "mixtral-8x7b-32768",
+            ],
+            index=0,
+            help="Choose the Groq-hosted model. Llama 3.3 70B is the most capable free-tier option.",
+        )
+        if groq_api_key:
+            st.caption("LLM enabled — answers come from Groq with model code + locked numbers.")
+        else:
+            st.caption("No API key set — assistant will use the deterministic Python interpreter.")
 
     current_config = ScenarioConfig(
         category=category,
@@ -1072,7 +1117,8 @@ def main() -> None:
     st.markdown("<div class='hero-title'>Biorefinery TEA Dashboard</div>", unsafe_allow_html=True)
     st.markdown(
         "<div class='hero-subtitle'>Integrated ammonia / urea + SCP techno-economics and cradle-to-gate LCA across "
-        "three feedstock pathways (formate, H2/CO2, methanol) with transparent assumptions and a deterministic model interpreter.</div>",
+        "three feedstock pathways (formate, H2/CO2, methanol) with transparent assumptions and a code-aware "
+        "Groq-hosted assistant.</div>",
         unsafe_allow_html=True,
     )
 
@@ -1081,12 +1127,14 @@ def main() -> None:
         "💬 Ask the assistant",
         key="float_open_chat",
         type="primary",
-        help="Ask the deterministic model interpreter about the current scenario.",
+        help="Ask about the current scenario, comparisons, or how the Python model works.",
     ):
         _chat_snapshot = cached_chat_snapshot(current_config, overrides, _data_hash=_dhash)
         _open_chat_dialog(
             current_eval=current_eval,
             snapshot=_chat_snapshot,
+            api_key=groq_api_key,
+            model=groq_model,
         )
 
     _section_header(
@@ -1206,23 +1254,24 @@ def main() -> None:
 
     _section_header(
         "Assistant",
-        "Ask the model interpreter",
-        "Deterministic answers computed from the same Python TEA/LCA results shown in the dashboard.",
+        "Ask the biorefinery assistant",
+        "Groq-hosted Llama 3.3 grounded in the locked Python TEA/LCA results — and the actual model source code.",
     )
 
-    if "interpreter_messages" not in st.session_state:
-        st.session_state.interpreter_messages = []
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
 
     with st.container(border=True):
         top_left, top_right = st.columns([3.8, 1.0])
         with top_left:
             st.caption(
-                "This assistant interprets the current scenario and comparison grids generated by the Python model."
+                "Ask about the current scenario, head-to-head comparisons, or how the Python model "
+                "calculates NPV, LCOX, and GWP. Numeric values are pulled directly from the model output."
             )
         with top_right:
-            if st.session_state.get("interpreter_messages"):
-                if st.button("Clear chat", key="clear_interpreter"):
-                    st.session_state.interpreter_messages = []
+            if st.session_state.get("chat_messages"):
+                if st.button("Clear chat", key="clear_chat"):
+                    st.session_state.chat_messages = []
                     st.rerun()
 
         # Inline "launcher" row: open-chat button + brief preview of the latest exchange.
@@ -1233,14 +1282,15 @@ def main() -> None:
                 key="open_chat_dialog",
                 type="primary",
                 use_container_width=True,
-                help="Open the deterministic model interpreter.",
+                help="Open the in-app assistant.",
             )
         with preview_col:
-            msgs = st.session_state.interpreter_messages
+            msgs = st.session_state.chat_messages
             if not msgs:
                 st.caption(
-                    "Click *Open chat* to ask about the current scenario, which route looks most attractive, "
-                    "or how a slider change would affect cost and GWP. Answers are computed from the model outputs."
+                    "Click *Open chat* to ask about the current scenario, which route is most or least "
+                    "attractive, how a slider change affects cost and GWP, or how the underlying Python "
+                    "code calculates NPV / LCOX / GWP."
                 )
             else:
                 last_user = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "")
@@ -1261,6 +1311,8 @@ def main() -> None:
         _open_chat_dialog(
             current_eval=current_eval,
             snapshot=_chat_snapshot,
+            api_key=groq_api_key,
+            model=groq_model,
         )
 
 
