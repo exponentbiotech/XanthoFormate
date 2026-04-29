@@ -36,7 +36,8 @@ class ModelInterpreterTest(unittest.TestCase):
         self.assertIn("USD 607.2M", answer)
         self.assertNotIn("USD 120", answer)
         self.assertNotIn("USD 144", answer)
-        self.assertIn("without an LLM", answer)
+        self.assertIn("The strongest route", answer)
+        self.assertNotIn("no LLM", answer)
 
 
 if __name__ == "__main__":

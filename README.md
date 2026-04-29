@@ -20,7 +20,7 @@ python -m pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-The model interpreter does not require an API key or external LLM service.
+The model interpreter is built into the app and uses the Python TEA/LCA calculations directly.
 
 ## App notes
 
@@ -33,6 +33,6 @@ The model interpreter does not require an API key or external LLM service.
 
 The in-app assistant:
 
-- answers from Python model outputs, not from a free-form LLM
+- answers from Python model outputs
 - compares the active scenario against recovery-method, feedstock, electricity, capacity, and LCA-credit sweeps
 - reports NPV, LCOX, and GWP values directly from the same model state used by the dashboard

@@ -110,14 +110,21 @@ def _profitability_answer(data: Mapping[str, object]) -> str:
     best_feed = _best(feedstock)
     best_scale = _best(scale)
 
-    lines = [
-        "Here is what the Python model actually says, without an LLM choosing the numbers.",
-        "",
-    ]
+    lines = []
+    if best_current:
+        lines.append(
+            f"The strongest route in the current economics is **{_config(best_current)}**. "
+            f"At the active scale, it gives {_metrics_sentence(best_current)}."
+        )
+        lines.append("")
+        lines.append("A few details are worth keeping separate:")
+    else:
+        lines.append("A few details are worth keeping separate:")
+
     if active:
         lines.append(_comparison_line("Active scenario", active))
     if best_current:
-        lines.append(_comparison_line("Best product/recovery at the active scale", best_current))
+        lines.append(_comparison_line("Best product/recovery choice at the active scale", best_current))
     if best_feed:
         lines.append(_comparison_line("Best feedstock case at the active scale", best_feed))
     if best_urea:
@@ -127,8 +134,8 @@ def _profitability_answer(data: Mapping[str, object]) -> str:
 
     lines.extend([
         "",
-        "The scale result is separate from the active-scale result. A 10,000 t/y NPV should not be described as the 1,000 t/y NPV.",
-        "Important caveat: Struvite looks economically strong here because the model assigns fertilizer-product value and reports economics per kg NH3-equivalent. That market assumption needs separate validation.",
+        "The scale result should be interpreted separately from the active-scale result: the 10,000 t/y NPV is not the same case as the 1,000 t/y NPV.",
+        "The main caveat is Struvite marketability. These economics assume the recovered Struvite receives the fertilizer-product value used in the model, and costs are reported per kg NH3-equivalent.",
     ])
     return "\n".join(lines)
 
@@ -212,7 +219,7 @@ def _active_answer(data: Mapping[str, object]) -> str:
 
 
 def answer_model_question(question: str, snapshot: Mapping[str, object]) -> str:
-    """Answer from Python model outputs only. No LLM calls, no invented values."""
+    """Answer from Python model outputs only."""
     q = question.lower()
     data = snapshot
 
