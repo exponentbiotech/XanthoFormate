@@ -1,5 +1,4 @@
 streamlit>=1.32
 numpy
 matplotlib
-groq>=0.9
 pandas

@@ -743,10 +743,10 @@ _METRIC_FIELDS = (
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Plain-English translation tables for the LLM-facing snapshot.
-#  The model frequently echoed snake_case identifiers (e.g. "npv_usd_million",
-#  "ammonia_scp", "struvite_map") back to users. Translating values up front
-#  removes the temptation: every key it sees is already a human-readable label.
+#  Plain-English translation tables for the chat/model-interpreter snapshot.
+#  Earlier LLM chat versions echoed snake_case identifiers (e.g.
+#  "npv_usd_million", "ammonia_scp", "struvite_map") back to users. Keeping the
+#  snapshot human-readable also makes deterministic interpreter output clearer.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Snake-case categorical IDs → friendly labels. Strings are unique across the
@@ -858,7 +858,7 @@ def _friendlify(obj: object) -> object:
 
 
 def _compact_eval(eval_result: ScenarioEvaluation) -> Dict[str, object]:
-    """Compact JSON-friendly summary of a scenario evaluation for LLM context."""
+    """Compact JSON-friendly summary of a scenario evaluation for chat context."""
     cfg = eval_result.foreground.scenario
     m = eval_result.tea.metrics
     l = eval_result.lca.metrics
@@ -883,7 +883,7 @@ def _compact_eval(eval_result: ScenarioEvaluation) -> Dict[str, object]:
 def _strip_constant_fields(rows: List[Dict[str, object]]) -> List[Dict[str, object]]:
     """Drop fields that are identical across every row.
 
-    The LLM only needs to see fields that VARY within a comparison list. Stripping
+    The chat interpreter only needs fields that VARY within a comparison list. Stripping
     constants shaves substantial tokens off the prompt (e.g. urea_recovery_method
     is always 'evaporation' inside the NH3 method list, so it's noise).
     Always preserves the metric fields and the scenario category.
@@ -911,11 +911,11 @@ def _best_row(
 
 
 def _winner_ref(row: Dict[str, object]) -> str:
-    """Compact one-line summary of a winning row for the LLM context.
+    """Compact one-line summary of a winning row for chat context.
 
     Returning a single string (rather than a nested dict with friendly keys)
     cuts ~60% of the token cost for the rankings block while still giving
-    the LLM everything it needs to cite the configuration and numbers.
+    the interpreter everything it needs to cite the configuration and numbers.
     """
     category = str(row.get("category", ""))
     cat_lbl = _VALUE_LABELS.get(category, category)
@@ -954,7 +954,7 @@ def _ranking_summary(
     capacity_curve: Sequence[Dict[str, object]],
     credit_sensitivity: Sequence[Dict[str, object]],
 ) -> Dict[str, object]:
-    """Precompute common "which is best?" answers so the LLM does not rank rows itself."""
+    """Precompute common "which is best?" answers from Python model rows."""
     all_current_capacity_modes = list(nh3_methods) + list(urea_methods)
 
     def _block(rows: Sequence[Dict[str, object]]) -> Dict[str, object]:
@@ -984,7 +984,7 @@ def comprehensive_chat_context(
 ) -> Dict[str, object]:
     """Build a snapshot covering the active scenario PLUS broad cross-scenario coverage.
 
-    The LLM uses this to answer questions that are not specific to the
+    The chat interpreter uses this to answer questions that are not specific to the
     currently-selected sidebar settings (e.g. "which feedstock is most
     profitable?", "which recovery method has the lowest GWP?", "how does
     LCOX scale with plant capacity?").
