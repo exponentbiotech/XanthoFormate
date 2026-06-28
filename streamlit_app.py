@@ -664,7 +664,7 @@ def _display_pathway_label(config: ScenarioConfig) -> str:
     return f"{product} via {feed_prefix}" if feed_prefix else product
 
 
-_SNAPSHOT_SCHEMA_VERSION = "2026-04-28-v10-llm-code-aware"
+_SNAPSHOT_SCHEMA_VERSION = "2026-06-28-v11-market-viability-fixed-net-bar"
 
 
 def _data_fingerprint() -> str:

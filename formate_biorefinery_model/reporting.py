@@ -23,6 +23,7 @@ from .run_scenarios import (
     RECOVERY_METHOD_LABELS,
     UREA_BEST_METHODS,
     ScenarioEvaluation,
+    evaluate_scenario,
     run_best_methods_grid,
     run_best_methods_negative_gwp_grid,
     run_lca_sensitivity_grid,
@@ -316,8 +317,22 @@ def plot_market_viability_overview(evaluations: Iterable[ScenarioEvaluation]) ->
         x = np.arange(n)
         w = 0.30
         gross = [r.tea.metrics["gross_primary_lcox_usd_per_kg"] for r in rows]
-        net   = [r.tea.metrics["net_primary_lcox_usd_per_kg"] for r in rows]
         mkt   = [_market(r) for r in rows]
+
+        # Net bar always reflects SCP coproduct credit, regardless of the
+        # sidebar checkbox.  Re-evaluate with use_scp_credit=True so the
+        # gray/colored comparison is meaningful and does not change when the
+        # user toggles the LCA credits checkbox.
+        from dataclasses import replace as _replace
+        def _net_with_scp(r: ScenarioEvaluation) -> float:
+            if r.foreground.scenario.use_scp_credit:
+                return r.tea.metrics["net_primary_lcox_usd_per_kg"]
+            cfg_scp_on = _replace(r.foreground.scenario, use_scp_credit=True)
+            scp_eval = evaluate_scenario(cfg_scp_on,
+                                         overrides=dict(r.foreground.scenario.user_overrides))
+            return scp_eval.tea.metrics["net_primary_lcox_usd_per_kg"]
+
+        net = [_net_with_scp(r) for r in rows]
 
         ax.bar(x - w / 2, gross, w, label="Gross LCOX (before credits)",
                color="#D5D5D5", edgecolor="white", linewidth=0.5, zorder=3)
