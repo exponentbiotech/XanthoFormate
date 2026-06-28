@@ -8,7 +8,7 @@ from formate_biorefinery_model.config import (
     ScenarioCategory,
     ScenarioConfig,
 )
-from formate_biorefinery_model.run_scenarios import evaluate_scenario
+from formate_biorefinery_model.run_scenarios import evaluate_scenario, run_best_methods_grid
 
 
 class FertilizerRevenueAccountingTest(unittest.TestCase):
@@ -37,6 +37,32 @@ class FertilizerRevenueAccountingTest(unittest.TestCase):
         self.assertGreater(fertilizer_credit, 0.0)
         self.assertAlmostEqual(metrics["benchmark_total_revenue_usd_per_y"], expected_revenue)
         self.assertAlmostEqual(metrics["npv_usd"] / 1e6, 52.12, places=1)
+
+    def test_major_capex_override_flows_into_npv_figure_grid(self) -> None:
+        base = run_best_methods_grid(capacities=[1_000.0], overrides={})
+        with_major = run_best_methods_grid(
+            capacities=[1_000.0],
+            overrides={"major_capex_usd": 1_000_000.0},
+        )
+
+        self.assertEqual(len(base), len(with_major))
+        for base_row, major_row in zip(base, with_major):
+            self.assertEqual(
+                base_row.foreground.scenario.ammonia_recovery_method,
+                major_row.foreground.scenario.ammonia_recovery_method,
+            )
+            self.assertEqual(
+                base_row.foreground.scenario.urea_recovery_method,
+                major_row.foreground.scenario.urea_recovery_method,
+            )
+            self.assertGreater(
+                major_row.tea.metrics["total_capital_usd"],
+                base_row.tea.metrics["total_capital_usd"],
+            )
+            self.assertLess(
+                major_row.tea.metrics["npv_usd"],
+                base_row.tea.metrics["npv_usd"],
+            )
 
 
 if __name__ == "__main__":

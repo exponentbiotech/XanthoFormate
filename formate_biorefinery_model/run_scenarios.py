@@ -160,6 +160,7 @@ def run_best_methods_grid(
     """
     caps = capacities or [100.0, 1_000.0, 10_000.0]
     scenario_updates = scenario_updates or {}
+    user_overrides = dict(overrides or {})
     results: List[ScenarioEvaluation] = []
     for method in NH3_BEST_METHODS:
         for cap in caps:
@@ -167,6 +168,7 @@ def run_best_methods_grid(
                 "category": ScenarioCategory.AMMONIA_SCP,
                 "annual_primary_product_tpy": cap,
                 "ammonia_recovery_method": method,
+                "user_overrides": user_overrides,
             }
             cfg_kwargs.update(scenario_updates)
             cfg = ScenarioConfig(
@@ -179,6 +181,7 @@ def run_best_methods_grid(
                 "category": ScenarioCategory.BIO_UREA_SCP,
                 "annual_primary_product_tpy": cap,
                 "urea_recovery_method": method,
+                "user_overrides": user_overrides,
             }
             cfg_kwargs.update(scenario_updates)
             cfg = ScenarioConfig(**cfg_kwargs)
