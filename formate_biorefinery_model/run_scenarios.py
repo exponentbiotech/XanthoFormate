@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Iterable, List, Optional
 
 from .config import (
@@ -56,7 +56,11 @@ def evaluate_scenario(
     config: ScenarioConfig,
     overrides: Optional[Dict[str, float]] = None,
 ) -> ScenarioEvaluation:
-    economic, lca_factors, technology, records = build_default_inputs(overrides=overrides or config.user_overrides)
+    merged_overrides = dict(config.user_overrides)
+    if overrides:
+        merged_overrides.update(overrides)
+    config = replace(config, user_overrides=merged_overrides)
+    economic, lca_factors, technology, records = build_default_inputs(overrides=merged_overrides)
     foreground = simulate_foreground(config, technology, economic)
     tea = evaluate_tea(foreground, economic)
     lca = evaluate_lca(foreground, lca_factors)

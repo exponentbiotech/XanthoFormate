@@ -64,6 +64,28 @@ class FertilizerRevenueAccountingTest(unittest.TestCase):
                 base_row.tea.metrics["npv_usd"],
             )
 
+    def test_major_capex_override_applies_to_direct_evaluation(self) -> None:
+        cfg = ScenarioConfig(
+            category=ScenarioCategory.AMMONIA_SCP,
+            annual_primary_product_tpy=1_000.0,
+            feedstock_type=FeedstockType.FORMATE,
+            electricity_case=ElectricityCase.RENEWABLE,
+            co2_source=CO2Source.BIOGENIC_WASTE,
+            ammonia_recovery_method=AmmoniaRecoveryMethod.STRUVITE_MAP,
+        )
+
+        base = evaluate_scenario(cfg)
+        with_major = evaluate_scenario(cfg, overrides={"major_capex_usd": 1_000_000.0})
+
+        self.assertGreater(
+            with_major.tea.metrics["total_capital_usd"],
+            base.tea.metrics["total_capital_usd"],
+        )
+        self.assertLess(
+            with_major.tea.metrics["npv_usd"],
+            base.tea.metrics["npv_usd"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
